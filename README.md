@@ -83,12 +83,12 @@ NEXT_PUBLIC_API_URL=http://localhost:8000
 ## 🎯 Target Users
 
 ### 📈 Primary: Active Intraday Traders
-- 25-45 years, experienced traders, $25K+ trading capital
+- Experienced traders, $25K+ trading capital
 - Trade 2-8 hours daily, focus on small-cap momentum
 - Need systematic sector sentiment analysis
 
 ### 📊 Secondary: Part-time Swing Traders
-- 30-55 years, supplemental income focus
+- Supplemental income focus
 - 1-2 hours daily, risk-conscious approach
 - Require quick decision frameworks
 

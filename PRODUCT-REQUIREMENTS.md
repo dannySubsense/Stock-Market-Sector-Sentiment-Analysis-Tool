@@ -46,13 +46,13 @@ The platform prioritizes sector sentiment as the primary decision interface, gui
 ### Target User Personas
 
 #### 📈 Primary: Active Intraday Traders
-- **Demographics:** 25-45 years, experienced traders, $25K+ trading capital
+- **Demographics:** Experienced traders, $25K+ trading capital
 - **Behavior:** Trade 2-8 hours daily, focus on small-cap momentum
 - **Pain Points:** Overwhelming data, poor sector context, manual screening
 - **Success Definition:** Consistent identification of 15%+ gap opportunities
 
 #### 📊 Secondary: Part-time Swing Traders
-- **Demographics:** 30-55 years, supplemental income focus
+- **Demographics:** Supplemental income focus
 - **Behavior:** 1-2 hours daily, risk-conscious approach
 - **Pain Points:** Limited time for research, need quick decision framework
 - **Success Definition:** Clear go/no-go signals with risk assessment
