@@ -84,12 +84,12 @@ NEXT_PUBLIC_API_URL=http://localhost:8000
 
 ### 📈 Primary: Active Intraday Traders
 - Experienced traders, $25K+ trading capital
-- Trade 2-8 hours daily, focus on small-cap momentum
+- Focus on small-cap momentum
 - Need systematic sector sentiment analysis
 
 ### 📊 Secondary: Part-time Swing Traders
 - Supplemental income focus
-- 1-2 hours daily, risk-conscious approach
+- Risk-conscious approach
 - Require quick decision frameworks
 
 ## 📈 Performance Targets
