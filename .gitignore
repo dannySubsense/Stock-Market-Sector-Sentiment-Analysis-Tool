@@ -142,6 +142,7 @@ temp/
 *.tmp
 
 # Documentation builds
+docs/
 docs/_build/
 site/
 

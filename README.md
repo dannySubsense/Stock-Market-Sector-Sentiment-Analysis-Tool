@@ -48,7 +48,7 @@ Data Layer (PostgreSQL + TimescaleDB + Redis)
 ### 📋 Development Setup
 
 ```bash
-# Clone the repository
+# Clone the repository (update YOUR_USERNAME with your actual GitHub username)
 git clone https://github.com/YOUR_USERNAME/stock-market-sentiment-agent.git
 cd stock-market-sentiment-agent
 
@@ -149,10 +149,10 @@ NEXT_PUBLIC_API_URL=http://localhost:8000
 
 ## 📚 Documentation
 
-- [📋 Product Requirements Document](./docs/PRD.md)
-- [🏗️ Technical Architecture](./docs/ARCHITECTURE.md)
-- [🔌 API Documentation](./docs/API_DOCUMENTATION.md)
-- [🧪 Testing Guide](./docs/TESTING.md)
+- [📋 Product Requirements Document](./PRODUCT-REQUIREMENTS.md)
+- [🏗️ Technical Architecture](./ARCHITECTURE.md)
+- [🔌 API Documentation](./API_DOCUMENTATION.md)
+- [🧪 Testing Guide](./TESTING.md)
 
 ## 🤝 Contributing
 
