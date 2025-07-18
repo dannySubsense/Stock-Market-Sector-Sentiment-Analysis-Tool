@@ -1,0 +1,42 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Custom CSS for the sector sentiment tool */
+@layer base {
+  html {
+    @apply bg-bg-primary text-text-primary;
+  }
+}
+
+@layer components {
+  .sector-card {
+    @apply rounded-lg shadow-lg p-6 transition-all duration-300 hover:shadow-xl;
+  }
+  
+  .sector-card.dark-red {
+    @apply bg-gradient-to-br from-sector-dark-red to-red-700;
+  }
+  
+  .sector-card.light-red {
+    @apply bg-gradient-to-br from-sector-light-red to-red-600;
+  }
+  
+  .sector-card.blue-neutral {
+    @apply bg-gradient-to-br from-sector-blue-neutral to-blue-600;
+  }
+  
+  .sector-card.light-green {
+    @apply bg-gradient-to-br from-sector-light-green to-green-600;
+  }
+  
+  .sector-card.dark-green {
+    @apply bg-gradient-to-br from-sector-dark-green to-green-700;
+  }
+}
+
+@layer utilities {
+  .text-shadow {
+    text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.5);
+  }
+} 

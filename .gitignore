@@ -43,6 +43,11 @@ venv.bak/
 *.db
 *.sqlite3
 
+# Credentials and API keys
+credentials.yml
+*.key
+*.secret
+
 # Jupyter Notebook
 .ipynb_checkpoints
 

@@ -1,77 +1,75 @@
 # FastAPI and Web Framework
-fastapi==0.104.1
-uvicorn[standard]==0.24.0
-python-multipart==0.0.6
-python-jose[cryptography]==3.3.0
-passlib[bcrypt]==1.7.4
+fastapi
+uvicorn[standard]
+python-multipart
+python-jose[cryptography]
+passlib[bcrypt]
 
 # Database
-sqlalchemy==2.0.23
-alembic==1.12.1
-psycopg2-binary==2.9.9
-redis==5.0.1
+sqlalchemy
+alembic
+psycopg2-binary
+redis
 
-# AI and ML
-openai==1.3.7
-transformers==4.35.2
-torch==2.1.1
-numpy==1.24.3
-pandas==2.1.3
-scikit-learn==1.3.2
+# AI and ML - Updated for Python 3.13.5 compatibility
+openai
+# transformers  # Temporarily disabled - can add back when needed
+# torch  # Temporarily disabled - can add back when needed
+numpy
+pandas
+# scikit-learn  # Temporarily disabled - can add back when needed
 
 # Financial Data APIs
-polygon-api-client==1.12.3
-yfinance==0.2.23
-alpha-vantage==2.3.1
+# polygon-api-client  # Will add back when MCP integration is ready
+yfinance
+# alpha-vantage  # Will add back when needed
 
-# MCP (Model Context Protocol)
-mcp==0.1.0
-# Note: MCP packages may need to be installed from source initially
+# MCP (Model Context Protocol) - Will add when ready
+# mcp
 
 # Data Processing
-beautifulsoup4==4.12.2
-requests==2.31.0
-aiohttp==3.9.1
-websockets==12.0
-schedule==1.2.0
+beautifulsoup4
+requests
+aiohttp
+websockets
+schedule
 
 # Utilities
-python-dotenv==1.0.0
-pydantic==2.5.0
-pydantic-settings==2.1.0
-httpx==0.25.2
-loguru==0.7.2
-python-dateutil==2.8.2
-pytz==2023.3
+python-dotenv
+pydantic
+pydantic-settings
+httpx
+loguru
+python-dateutil
+pytz
 
 # Security
-bcrypt==4.1.1
-cryptography==41.0.8
+bcrypt
+cryptography
 
 # Testing
-pytest==7.4.3
-pytest-asyncio==0.21.1
-pytest-cov==4.1.0
+pytest
+pytest-asyncio
+pytest-cov
 
 # Development
-black==23.11.0
-flake8==6.1.0
-mypy==1.7.1
-pre-commit==3.6.0
+black
+flake8
+mypy
+pre-commit
 
 # Production
-gunicorn==21.2.0
-sentry-sdk[fastapi]==1.38.0
+gunicorn
+sentry-sdk[fastapi]
 
 # Time Series Database
-asyncpg==0.29.0  # For TimescaleDB async support
+asyncpg  # For TimescaleDB async support
 
 # Caching
-aioredis==2.0.1
 
 # Background Tasks
-celery==5.3.4
-kombu==5.3.4
+celery
+kombu
 
 # Monitoring
-prometheus-client==0.19.0 
+prometheus-client

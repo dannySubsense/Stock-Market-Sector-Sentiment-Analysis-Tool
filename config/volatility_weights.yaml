@@ -1,0 +1,19 @@
+volatility_weights:
+  dynamic_settings:
+    confidence_threshold: 0.7
+    lookback_period: 30
+    max_change_percent: 0.3
+    rebalance_frequency: weekly
+  hybrid_settings:
+    dynamic_weight: 0.3
+    static_weight: 0.7
+  source: static
+  static_weights:
+    consumer_discretionary: 1.2
+    energy: 1.2
+    financial: 1.1
+    healthcare: 1.5
+    industrials: 1.0
+    materials: 0.9
+    technology: 1.3
+    utilities: 0.7
