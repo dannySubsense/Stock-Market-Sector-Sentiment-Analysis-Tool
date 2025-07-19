@@ -17,6 +17,7 @@ from models.stock_data import StockData
 from mcp.polygon_client import get_polygon_client
 from mcp.fmp_client import get_fmp_client
 from config.volatility_weights import get_static_weights, get_weight_for_sector
+from services.sector_mapper import FMPSectorMapper
 
 logger = logging.getLogger(__name__)
 
@@ -132,6 +133,7 @@ class UniverseBuilder:
     def __init__(self):
         self.polygon_client = get_polygon_client()
         self.fmp_client = get_fmp_client()
+        self.sector_mapper = FMPSectorMapper()
         self.target_universe_size = 1500
 
         # Universe selection criteria - Optimized for sector sentiment analysis
@@ -168,13 +170,51 @@ class UniverseBuilder:
 
     async def get_fmp_universe(self) -> Dict[str, Any]:
         """
-        Get complete universe using FMP screener
+        Get complete universe using FMP screener with sector mapping
         
         Returns:
-            Dict: Universe data from FMP
+            Dict: Universe data from FMP with mapped sectors
         """
-        criteria = self.get_fmp_screening_criteria()
-        return await self.fmp_client.get_stock_screener(criteria)
+        try:
+            # Get raw data from FMP
+            criteria = self.get_fmp_screening_criteria()
+            fmp_result = await self.fmp_client.get_stock_screener(criteria)
+            
+            if fmp_result.get('status') != 'success':
+                return fmp_result
+            
+            # Map sectors for each stock
+            mapped_stocks = []
+            for stock in fmp_result.get('stocks', []):
+                # Get original FMP sector
+                original_fmp_sector = stock.get('sector', '')
+                
+                # Map to internal sector name
+                mapped_sector = self.sector_mapper.map_fmp_sector(original_fmp_sector)
+                
+                # Add sector mapping to stock data
+                mapped_stock = {
+                    **stock,  # Preserve all original FMP data
+                    'sector': mapped_sector,  # Our internal sector
+                    'original_fmp_sector': original_fmp_sector  # Preserve original
+                }
+                mapped_stocks.append(mapped_stock)
+            
+            # Return updated result
+            return {
+                **fmp_result,
+                'stocks': mapped_stocks,
+                'universe_size': len(mapped_stocks)
+            }
+            
+        except Exception as e:
+            logger.error(f"Failed to get FMP universe with sector mapping: {e}")
+            return {
+                'status': 'error',
+                'message': str(e),
+                'stocks': [],
+                'universe_size': 0
+            }
 
     async def build_daily_universe(self) -> Dict[str, Any]:
         """Build the complete daily universe from scratch"""

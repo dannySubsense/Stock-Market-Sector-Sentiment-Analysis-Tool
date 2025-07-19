@@ -34,7 +34,8 @@ class StockUniverse(Base):
     current_price = Column(Float, nullable=False)
     
     # Sector classification
-    sector = Column(String(50), nullable=False)  # One of 8 sectors
+    sector = Column(String(50), nullable=False)  # One of 11 FMP sectors + theme slot
+    original_fmp_sector = Column(String(100), nullable=True)  # Preserve original FMP sector data
     volatility_multiplier = Column(Float, default=1.0)  # Sector-specific multiplier
     
     # Gap analysis
