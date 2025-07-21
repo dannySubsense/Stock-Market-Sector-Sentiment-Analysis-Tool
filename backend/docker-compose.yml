@@ -1,0 +1,36 @@
+services:
+  postgres:
+    image: timescale/timescaledb:latest-pg15
+    container_name: market_sentiment_postgres
+    environment:
+      POSTGRES_DB: market_sentiment
+      POSTGRES_USER: market_user
+      POSTGRES_PASSWORD: market_password
+    ports:
+      - "5433:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./init-scripts:/docker-entrypoint-initdb.d
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U market_user -d market_sentiment"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+  redis:
+    image: redis:7-alpine
+    container_name: market_sentiment_redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+volumes:
+  postgres_data:
+  redis_data: 

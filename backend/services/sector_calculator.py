@@ -1,24 +1,21 @@
 """
-Sector Performance Calculator - Slice 1A Implementation
-Calculates sector sentiment with multi-timeframe analysis and color classification
-Uses volume-weighted analysis and volatility multipliers from SDD
+Sector Calculator - Core sector sentiment analysis engine
+Implements sector performance calculation with volume weighting and Russell 2000 benchmarking
 """
 
-from typing import List, Dict, Any, Optional, Tuple
-from sqlalchemy.orm import Session
-from sqlalchemy import and_, func
-import asyncio
 import logging
-from datetime import datetime, timedelta
-import json
+from datetime import datetime
+from typing import Dict, List, Any, Optional
 
 from core.database import SessionLocal
 from models.sector_sentiment import SectorSentiment, ColorClassification
 from models.stock_universe import StockUniverse
-from models.stock_data import StockData
-from mcp.polygon_client import get_polygon_client
+from sqlalchemy import and_
 from mcp.fmp_client import get_fmp_client
+from mcp.polygon_client import get_polygon_client
 from config.volatility_weights import get_weight_for_sector
+from services.iwm_benchmark_service_1d import get_iwm_service
+from services.persistence_interface import PersistenceLayer
 
 logger = logging.getLogger(__name__)
 
@@ -55,13 +52,35 @@ class SectorPerformanceCalculator:
     Implements volume weighting and volatility multipliers from SDD
     """
 
-    def __init__(self):
+    def __init__(self, persistence_layer: Optional[PersistenceLayer] = None):
+        """
+        Initialize sector calculator with optional persistence
+
+        Args:
+            persistence_layer: Optional persistence implementation for data storage
+                              If None, uses database persistence by default
+        """
         self.polygon_client = get_polygon_client()
         self.fmp_client = get_fmp_client()
-        self.russell_2000_symbol = "IWM"  # Russell 2000 ETF for benchmark
+
+        # Initialize IWM service immediately - fail fast if issues
+        try:
+            self._iwm_service = get_iwm_service()
+        except ImportError as e:
+            raise ImportError(f"Failed to initialize IWM service: {e}")
+
+        # Dependency injection for persistence (enables testing and flexibility)
+        from services.persistence_interface import (
+            PersistenceLayer,
+            get_persistence_layer,
+        )
+
+        self.persistence = persistence_layer or get_persistence_layer(
+            enable_database=True
+        )
 
     async def calculate_all_sectors(self) -> Dict[str, Any]:
-        """Calculate sentiment for all 8 sectors"""
+        """Calculate sentiment for all 8 sectors with separated persistence"""
         try:
             logger.info("Starting sector sentiment calculation for all sectors")
 
@@ -70,23 +89,21 @@ class SectorPerformanceCalculator:
             logger.info(f"Calculating sentiment for {len(sectors)} sectors")
 
             results = {}
+            # Get Russell 2000 benchmark using consolidated service
             russell_benchmark = await self._get_russell_2000_performance()
 
+            # Pure calculation logic (separated from persistence)
             for sector in sectors:
-                try:
-                    result = await self.calculate_sector_sentiment(
-                        sector, russell_benchmark
-                    )
-                    results[sector] = result
-                    logger.info(
-                        f"Calculated sentiment for {sector}: {result.get('sentiment_score', 0):.3f}"
-                    )
-                except Exception as e:
-                    logger.error(f"Error calculating sentiment for {sector}: {e}")
-                    results[sector] = self._get_default_sector_result(sector)
+                logger.info(f"Analyzing sector: {sector}")
+                sector_result = await self.calculate_sector_sentiment(
+                    sector, russell_benchmark
+                )
+                results[sector] = sector_result
 
-            # Update database with results
-            await self._update_sector_sentiment_table(results)
+            # Separated persistence logic - non-blocking
+            await self._persist_sector_analysis_if_enabled(
+                results, russell_benchmark, sectors
+            )
 
             return {
                 "status": "success",
@@ -136,6 +153,7 @@ class SectorPerformanceCalculator:
             )
 
             # Get Russell 2000 comparison
+            # Calculate Russell comparison using consolidated service
             russell_comparison = self._calculate_russell_comparison(
                 timeframe_scores, russell_benchmark
             )
@@ -162,7 +180,7 @@ class SectorPerformanceCalculator:
             with SessionLocal() as db:
                 sectors = (
                     db.query(StockUniverse.sector)
-                    .filter(StockUniverse.is_active == True)
+                    .filter(StockUniverse.is_active)
                     .distinct()
                     .all()
                 )
@@ -190,7 +208,7 @@ class SectorPerformanceCalculator:
                     .filter(
                         and_(
                             StockUniverse.sector == sector,
-                            StockUniverse.is_active == True,
+                            StockUniverse.is_active,
                         )
                     )
                     .all()
@@ -244,14 +262,56 @@ class SectorPerformanceCalculator:
         return performance_data
 
     async def _get_stock_quote_data(self, symbol: str) -> Optional[Dict[str, Any]]:
-        """Get current quote data for a stock"""
+        """Get current quote data for a stock from stored price data first, then API fallback"""
         try:
-            # Try FMP first
+            # First try to get data from stock_prices_1d table (FAST - no API calls)
+            stored_data = await self._get_stored_price_data(symbol)
+            if stored_data:
+                return stored_data
+
+            # Fallback to API only if no stored data available
+            logger.debug(f"No stored data for {symbol}, falling back to API")
+
+            # Try FMP API
             fmp_result = await self.fmp_client.get_quote(symbol)
             if fmp_result["status"] == "success" and fmp_result["quote"]:
                 return fmp_result["quote"]
+
         except Exception as e:
             logger.warning(f"Error getting quote for {symbol}: {e}")
+
+        return None
+
+    async def _get_stored_price_data(self, symbol: str) -> Optional[Dict[str, Any]]:
+        """Get the most recent price data from stock_prices_1d table"""
+        try:
+            with SessionLocal() as db:
+                from models.stock_data import StockPrice1D
+                from sqlalchemy import desc
+
+                # Get the most recent price record for this symbol
+                recent_price = (
+                    db.query(StockPrice1D)
+                    .filter(StockPrice1D.symbol == symbol)
+                    .order_by(desc(StockPrice1D.timestamp))
+                    .first()
+                )
+
+                if recent_price:
+                    # Convert to format expected by sector calculator
+                    return {
+                        "symbol": recent_price.symbol,
+                        "price": recent_price.close_price,
+                        "volume": recent_price.volume,
+                        "open": recent_price.open_price,
+                        "high": recent_price.high_price,
+                        "low": recent_price.low_price,
+                        "avgVolume": recent_price.volume,  # Use current volume as proxy
+                        "timestamp": recent_price.timestamp.isoformat(),
+                    }
+
+        except Exception as e:
+            logger.debug(f"Error getting stored price data for {symbol}: {e}")
 
         return None
 
@@ -419,40 +479,23 @@ class SectorPerformanceCalculator:
             return 0.5
 
     async def _get_russell_2000_performance(self) -> Dict[str, float]:
-        """Get Russell 2000 performance for benchmark comparison"""
-        try:
-            # Get IWM (Russell 2000 ETF) performance
-            quote_data = await self._get_stock_quote_data(self.russell_2000_symbol)
-            if quote_data:
-                daily_change = quote_data.get("changesPercentage", 0)
-                return {
-                    "30min": daily_change * 0.3,  # Approximate
-                    "1day": daily_change,
-                    "3day": daily_change * 2.5,  # Approximate
-                    "1week": daily_change * 4.0,  # Approximate
-                }
-        except Exception as e:
-            logger.warning(f"Error getting Russell 2000 performance: {e}")
+        """
+        ADAPTER METHOD - Delegates to IWM Benchmark Service
 
-        # Default neutral performance
-        return {"30min": 0, "1day": 0, "3day": 0, "1week": 0}
+        Returns:
+            Dictionary with Russell 2000 performance across timeframes
+        """
+        return await self._iwm_service.get_russell_2000_performance()
 
     def _calculate_russell_comparison(
-        self, timeframe_scores: Dict, russell_benchmark: Optional[Dict]
-    ) -> Dict[str, float]:
-        """Calculate sector performance relative to Russell 2000"""
-        if not russell_benchmark:
-            return {"30min": 0, "1day": 0, "3day": 0, "1week": 0}
-
-        comparison = {}
-        for timeframe in ["30min", "1day", "3day", "1week"]:
-            sector_score = (
-                timeframe_scores.get(timeframe, 0) * 100
-            )  # Convert to percentage
-            russell_score = russell_benchmark.get(timeframe, 0)
-            comparison[timeframe] = sector_score - russell_score
-
-        return comparison
+        self, sector_performance: float, timeframe: str
+    ) -> float:
+        """
+        ADAPTER METHOD - Delegates to IWM Benchmark Service
+        """
+        return self._iwm_service.calculate_russell_comparison(
+            sector_performance, timeframe
+        )
 
     def _get_default_sector_result(self, sector: str) -> Dict[str, Any]:
         """Get default result for sector with no data"""
@@ -468,54 +511,38 @@ class SectorPerformanceCalculator:
             "last_updated": datetime.utcnow().isoformat(),
         }
 
-    async def _update_sector_sentiment_table(
-        self, sector_results: Dict[str, Dict]
+    async def _persist_sector_analysis_if_enabled(
+        self,
+        results: Dict[str, Any],
+        russell_benchmark: Dict[str, Any],
+        sectors: List[str],
     ) -> None:
-        """Update the SectorSentiment table with calculated results"""
+        """
+        Separated persistence logic for complete sector analysis
+        Non-blocking - failures don't affect main calculation
+        """
         try:
-            with SessionLocal() as db:
-                for sector, result in sector_results.items():
-                    # Check if sector sentiment exists
-                    existing = (
-                        db.query(SectorSentiment)
-                        .filter(SectorSentiment.sector == sector)
-                        .first()
-                    )
+            analysis_metadata = {
+                "trigger": "background_analysis",
+                "russell_benchmark": russell_benchmark,
+                "sectors_analyzed": len(sectors),
+                "timestamp": datetime.utcnow().isoformat(),
+            }
 
-                    timeframe_scores = result.get("timeframe_scores", {})
+            success = await self.persistence.store_sector_sentiment(
+                results, analysis_metadata
+            )
 
-                    if existing:
-                        # Update existing record
-                        existing.sentiment_score = result["sentiment_score"]
-                        existing.color_classification = result["color_classification"]
-                        existing.confidence_level = result["confidence_level"]
-                        existing.timeframe_30min = timeframe_scores.get("30min", 0)
-                        existing.timeframe_1day = timeframe_scores.get("1day", 0)
-                        existing.timeframe_3day = timeframe_scores.get("3day", 0)
-                        existing.timeframe_1week = timeframe_scores.get("1week", 0)
-                        existing.last_updated = datetime.utcnow()
-                    else:
-                        # Create new record
-                        new_sentiment = SectorSentiment(
-                            sector=sector,
-                            sentiment_score=result["sentiment_score"],
-                            color_classification=result["color_classification"],
-                            confidence_level=result["confidence_level"],
-                            timeframe_30min=timeframe_scores.get("30min", 0),
-                            timeframe_1day=timeframe_scores.get("1day", 0),
-                            timeframe_3day=timeframe_scores.get("3day", 0),
-                            timeframe_1week=timeframe_scores.get("1week", 0),
-                            last_updated=datetime.utcnow(),
-                        )
-                        db.add(new_sentiment)
-
-                db.commit()
+            if success:
                 logger.info(
-                    f"Updated sector sentiment for {len(sector_results)} sectors"
+                    f"Successfully persisted complete sector analysis for {len(results)} sectors"
                 )
+            else:
+                logger.warning("Sector analysis persistence failed (non-blocking)")
 
         except Exception as e:
-            logger.error(f"Failed to update sector sentiment table: {e}")
+            # Persistence failures are logged but don't affect main calculation
+            logger.warning(f"Sector analysis persistence error (non-blocking): {e}")
 
 
 # Global instance

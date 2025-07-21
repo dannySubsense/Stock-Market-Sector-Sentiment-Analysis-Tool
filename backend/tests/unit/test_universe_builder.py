@@ -113,7 +113,7 @@ class TestUniverseBuilderSectorIntegration:
                     "sector": "",  # Empty sector
                     "industry": "Some Industry",
                 },
-            ]
+            ],
         }
 
         # Call the method
@@ -138,20 +138,20 @@ class TestUniverseBuilderSectorIntegration:
         mock_fmp_client.return_value = {
             "status": "success",
             "stocks": [
-            {
-                "symbol": "MSFT",
-                "companyName": "Microsoft Corp",
-                "exchange": "NASDAQ",
-                "marketCap": 2500000000000,
-                "price": 300.00,
-                "avgVolume": 25000000,
-                "sector": "Technology",
-                "industry": "Software",
-                "beta": 0.9,
-                "pe": 25.5,
-                "eps": 12.0,
-            }
-        ]
+                {
+                    "symbol": "MSFT",
+                    "companyName": "Microsoft Corp",
+                    "exchange": "NASDAQ",
+                    "marketCap": 2500000000000,
+                    "price": 300.00,
+                    "avgVolume": 25000000,
+                    "sector": "Technology",
+                    "industry": "Software",
+                    "beta": 0.9,
+                    "pe": 25.5,
+                    "eps": 12.0,
+                }
+            ],
         }
 
         # Call the method
@@ -185,95 +185,95 @@ class TestUniverseBuilderSectorIntegration:
         mock_fmp_client.return_value = {
             "status": "success",
             "stocks": [
-            {
-                "symbol": "MAT",
-                "sector": "Basic Materials",
-                "companyName": "Materials Co",
-                "exchange": "NYSE",
-                "marketCap": 1000000000,
-                "price": 50,
-            },
-            {
-                "symbol": "COM",
-                "sector": "Communication Services",
-                "companyName": "Comms Co",
-                "exchange": "NASDAQ",
-                "marketCap": 1000000000,
-                "price": 50,
-            },
-            {
-                "symbol": "CYC",
-                "sector": "Consumer Cyclical",
-                "companyName": "Cyclical Co",
-                "exchange": "NYSE",
-                "marketCap": 1000000000,
-                "price": 50,
-            },
-            {
-                "symbol": "DEF",
-                "sector": "Consumer Defensive",
-                "companyName": "Defensive Co",
-                "exchange": "NASDAQ",
-                "marketCap": 1000000000,
-                "price": 50,
-            },
-            {
-                "symbol": "ENE",
-                "sector": "Energy",
-                "companyName": "Energy Co",
-                "exchange": "NYSE",
-                "marketCap": 1000000000,
-                "price": 50,
-            },
-            {
-                "symbol": "FIN",
-                "sector": "Financial Services",
-                "companyName": "Financial Co",
-                "exchange": "NASDAQ",
-                "marketCap": 1000000000,
-                "price": 50,
-            },
-            {
-                "symbol": "HEA",
-                "sector": "Healthcare",
-                "companyName": "Healthcare Co",
-                "exchange": "NYSE",
-                "marketCap": 1000000000,
-                "price": 50,
-            },
-            {
-                "symbol": "IND",
-                "sector": "Industrials",
-                "companyName": "Industrial Co",
-                "exchange": "NASDAQ",
-                "marketCap": 1000000000,
-                "price": 50,
-            },
-            {
-                "symbol": "REA",
-                "sector": "Real Estate",
-                "companyName": "Real Estate Co",
-                "exchange": "NYSE",
-                "marketCap": 1000000000,
-                "price": 50,
-            },
-            {
-                "symbol": "TEC",
-                "sector": "Technology",
-                "companyName": "Tech Co",
-                "exchange": "NASDAQ",
-                "marketCap": 1000000000,
-                "price": 50,
-            },
-            {
-                "symbol": "UTI",
-                "sector": "Utilities",
-                "companyName": "Utility Co",
-                "exchange": "NYSE",
-                "marketCap": 1000000000,
-                "price": 50,
-            },
-        ]
+                {
+                    "symbol": "MAT",
+                    "sector": "Basic Materials",
+                    "companyName": "Materials Co",
+                    "exchange": "NYSE",
+                    "marketCap": 1000000000,
+                    "price": 50,
+                },
+                {
+                    "symbol": "COM",
+                    "sector": "Communication Services",
+                    "companyName": "Comms Co",
+                    "exchange": "NASDAQ",
+                    "marketCap": 1000000000,
+                    "price": 50,
+                },
+                {
+                    "symbol": "CYC",
+                    "sector": "Consumer Cyclical",
+                    "companyName": "Cyclical Co",
+                    "exchange": "NYSE",
+                    "marketCap": 1000000000,
+                    "price": 50,
+                },
+                {
+                    "symbol": "DEF",
+                    "sector": "Consumer Defensive",
+                    "companyName": "Defensive Co",
+                    "exchange": "NASDAQ",
+                    "marketCap": 1000000000,
+                    "price": 50,
+                },
+                {
+                    "symbol": "ENE",
+                    "sector": "Energy",
+                    "companyName": "Energy Co",
+                    "exchange": "NYSE",
+                    "marketCap": 1000000000,
+                    "price": 50,
+                },
+                {
+                    "symbol": "FIN",
+                    "sector": "Financial Services",
+                    "companyName": "Financial Co",
+                    "exchange": "NASDAQ",
+                    "marketCap": 1000000000,
+                    "price": 50,
+                },
+                {
+                    "symbol": "HEA",
+                    "sector": "Healthcare",
+                    "companyName": "Healthcare Co",
+                    "exchange": "NYSE",
+                    "marketCap": 1000000000,
+                    "price": 50,
+                },
+                {
+                    "symbol": "IND",
+                    "sector": "Industrials",
+                    "companyName": "Industrial Co",
+                    "exchange": "NASDAQ",
+                    "marketCap": 1000000000,
+                    "price": 50,
+                },
+                {
+                    "symbol": "REA",
+                    "sector": "Real Estate",
+                    "companyName": "Real Estate Co",
+                    "exchange": "NYSE",
+                    "marketCap": 1000000000,
+                    "price": 50,
+                },
+                {
+                    "symbol": "TEC",
+                    "sector": "Technology",
+                    "companyName": "Tech Co",
+                    "exchange": "NASDAQ",
+                    "marketCap": 1000000000,
+                    "price": 50,
+                },
+                {
+                    "symbol": "UTI",
+                    "sector": "Utilities",
+                    "companyName": "Utility Co",
+                    "exchange": "NYSE",
+                    "marketCap": 1000000000,
+                    "price": 50,
+                },
+            ],
         }
 
         # Call the method

@@ -17,18 +17,18 @@ def e2e_test_data():
     """
     return {
         "performance_targets": {
-            "sector_grid_load": 5.0,       # seconds (relaxed for dev)
-            "analysis_completion": 310.0,   # seconds (5 minutes + 10s buffer)
-            "api_response_time": 2.0,       # seconds (relaxed for dev)
-            "api_chain_execution": 20.0,    # seconds (relaxed for dev)
-            "data_flow_validation": 10.0,   # seconds (relaxed for dev)
-            "error_recovery": 5.0,          # seconds (relaxed for dev)
+            "sector_grid_load": 5.0,  # seconds (relaxed for dev)
+            "analysis_completion": 310.0,  # seconds (5 minutes + 10s buffer)
+            "api_response_time": 2.0,  # seconds (relaxed for dev)
+            "api_chain_execution": 20.0,  # seconds (relaxed for dev)
+            "data_flow_validation": 10.0,  # seconds (relaxed for dev)
+            "error_recovery": 5.0,  # seconds (relaxed for dev)
         },
         "workflow_steps": {
-            "sector_dashboard": 8,         # steps
-            "stock_universe": 8,           # steps
-            "analysis_workflow": 7,        # steps
-            "error_recovery": 6,           # steps
+            "sector_dashboard": 8,  # steps
+            "stock_universe": 8,  # steps
+            "analysis_workflow": 7,  # steps
+            "error_recovery": 6,  # steps
         },
         "e2e_timeout": 600,  # 10 minutes for E2E tests
         "retry_attempts": 3,
@@ -43,7 +43,7 @@ def e2e_test_environment():
     """
     return {
         "database": "test_e2e_db",
-        "redis": "test_e2e_redis", 
+        "redis": "test_e2e_redis",
         "timeout": 600,  # 10 minutes for E2E tests
         "retry_attempts": 3,
     }
@@ -58,12 +58,12 @@ def e2e_workflow_steps():
         "sector_dashboard": [
             "user_opens_dashboard",
             "system_loads_sector_grid",
-            "user_clicks_on_sector", 
+            "user_clicks_on_sector",
             "system_shows_sector_details",
             "user_views_top_stocks",
             "user_triggers_refresh",
             "system_completes_analysis",
-            "user_sees_updated_data"
+            "user_sees_updated_data",
         ],
         "stock_universe": [
             "user_accesses_stock_universe",
@@ -73,7 +73,7 @@ def e2e_workflow_steps():
             "user_checks_gap_stocks",
             "user_refreshes_universe",
             "system_updates_universe",
-            "user_sees_updated_data"
+            "user_sees_updated_data",
         ],
         "analysis_workflow": [
             "user_triggers_on_demand_analysis",
@@ -82,7 +82,7 @@ def e2e_workflow_steps():
             "system_completes_analysis",
             "cache_is_updated",
             "user_sees_fresh_data",
-            "performance_is_maintained"
+            "performance_is_maintained",
         ],
         "error_recovery": [
             "external_api_fails",
@@ -90,8 +90,8 @@ def e2e_workflow_steps():
             "user_sees_stale_data_warning",
             "system_retries_api",
             "system_recovers",
-            "user_sees_fresh_data"
-        ]
+            "user_sees_fresh_data",
+        ],
     }
 
 
@@ -115,10 +115,10 @@ def e2e_performance_benchmarks():
         },
         "api_response_times": {
             "sectors_endpoint": 2.0,  # seconds (relaxed for dev)
-            "stocks_endpoint": 2.0,   # seconds (relaxed for dev)
-            "analysis_endpoint": 5.0, # seconds (relaxed for dev)
-            "health_endpoint": 1.0,   # seconds (relaxed for dev)
-        }
+            "stocks_endpoint": 2.0,  # seconds (relaxed for dev)
+            "analysis_endpoint": 5.0,  # seconds (relaxed for dev)
+            "health_endpoint": 1.0,  # seconds (relaxed for dev)
+        },
     }
 
 
@@ -126,7 +126,7 @@ def e2e_performance_benchmarks():
 def e2e_api_chains():
     """
     E2E API chain definitions
-    
+
     Returns:
         Dict[str, List[str]]: API chain definitions
     """
@@ -137,7 +137,7 @@ def e2e_api_chains():
             "stocks_endpoint",
             "analysis_endpoint",
             "cache_endpoint",
-            "final_health_check"
+            "final_health_check",
         ]
     }
 
@@ -146,7 +146,7 @@ def e2e_api_chains():
 def e2e_data_flows():
     """
     E2E data flow definitions
-    
+
     Returns:
         Dict[str, List[str]]: Data flow definitions
     """
@@ -156,7 +156,7 @@ def e2e_data_flows():
             "stock_data_flow",
             "analysis_data_flow",
             "cache_data_flow",
-            "data_consistency_validation"
+            "data_consistency_validation",
         ]
     }
 
@@ -165,13 +165,13 @@ def e2e_data_flows():
 def e2e_performance_targets():
     """
     E2E performance target definitions
-    
+
     Returns:
         Dict[str, float]: Performance target definitions
     """
     return {
         "concurrent_requests": 2.0,  # 2 seconds for concurrent requests
-        "sequential_requests": 1.0   # 1 second for sequential requests
+        "sequential_requests": 1.0,  # 1 second for sequential requests
     }
 
 
@@ -179,7 +179,7 @@ def e2e_performance_targets():
 def e2e_error_scenarios():
     """
     E2E error scenario definitions
-    
+
     Returns:
         Dict[str, List[str]]: Error scenario definitions
     """
@@ -189,7 +189,7 @@ def e2e_error_scenarios():
             "malformed_request_handled",
             "rate_limit_handled",
             "system_recovery_validated",
-            "system_stability_validated"
+            "system_stability_validated",
         ]
     }
 
@@ -198,15 +198,15 @@ def e2e_error_scenarios():
 def e2e_benchmark_targets():
     """
     E2E benchmark target definitions
-    
+
     Returns:
         Dict[str, float]: Benchmark target definitions
     """
     return {
-        "response_time": 2.0,        # 2.0 seconds average response time (relaxed for dev)
-        "throughput": 20.0,          # 20 requests per minute (relaxed for dev)
-        "concurrent_users": 10,      # 10 concurrent users
-        "stress_recovery": 5.0       # 5 seconds recovery time (relaxed for dev)
+        "response_time": 2.0,  # 2.0 seconds average response time (relaxed for dev)
+        "throughput": 20.0,  # 20 requests per minute (relaxed for dev)
+        "concurrent_users": 10,  # 10 concurrent users
+        "stress_recovery": 5.0,  # 5 seconds recovery time (relaxed for dev)
     }
 
 
@@ -214,13 +214,13 @@ def e2e_benchmark_targets():
 def e2e_system_targets():
     """
     E2E system target definitions
-    
+
     Returns:
         Dict[str, float]: System target definitions
     """
     return {
-        "health_check": 1.0,         # 1.0 seconds health check (relaxed for dev)
-        "data_pipeline": 30.0,       # 30 seconds data pipeline (relaxed for dev)
-        "cache_operations": 1.0,     # 1.0 seconds cache operations (relaxed for dev)
-        "database_operations": 5.0   # 5 seconds database operations (relaxed for dev)
-    } 
+        "health_check": 1.0,  # 1.0 seconds health check (relaxed for dev)
+        "data_pipeline": 30.0,  # 30 seconds data pipeline (relaxed for dev)
+        "cache_operations": 1.0,  # 1.0 seconds cache operations (relaxed for dev)
+        "database_operations": 5.0,  # 5 seconds database operations (relaxed for dev)
+    }

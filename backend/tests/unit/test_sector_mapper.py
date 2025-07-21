@@ -76,9 +76,7 @@ class TestFMPSectorMapper:
             assert expected in sectors, f"Missing sector: {expected}"
 
         # Check we have at least 11 sectors
-        assert len(sectors) >= 11, (
-            f"Expected at least 11 sectors, got {len(sectors)}"
-        )
+        assert len(sectors) >= 11, f"Expected at least 11 sectors, got {len(sectors)}"
 
     def test_get_all_sectors_includes_theme_slot(self):
         """Test that get_all_sectors includes theme slot placeholder"""
@@ -89,18 +87,18 @@ class TestFMPSectorMapper:
             len(sectors) == 12
         ), f"Expected exactly 12 slots (11 + theme), got {len(sectors)}"
 
-    def test_mapping_is_case_sensitive(self):
-        """Test that sector mapping is case sensitive"""
-        # FMP sectors should be exact case match
+    def test_mapping_is_case_insensitive(self):
+        """Test that sector mapping is case insensitive (post-refactoring)"""
+        # FMP sectors should work regardless of case
         assert (
-            self.mapper.map_fmp_sector("technology") == "unknown_sector"
-        )  # lowercase should fail
+            self.mapper.map_fmp_sector("technology") == "technology"
+        )  # lowercase should work
         assert (
             self.mapper.map_fmp_sector("Technology") == "technology"
-        )  # correct case should work
+        )  # title case should work
         assert (
-            self.mapper.map_fmp_sector("TECHNOLOGY") == "unknown_sector"
-        )  # uppercase should fail
+            self.mapper.map_fmp_sector("TECHNOLOGY") == "technology"
+        )  # uppercase should work
 
     def test_get_theme_slot_info(self):
         """Test theme slot placeholder information"""

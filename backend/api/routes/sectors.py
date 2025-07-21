@@ -1,303 +1,309 @@
 """
-Sectors API endpoints for the 8-sector grid dashboard
-Enhanced with cache integration and on-demand analysis for Slice 1A
+Sectors API Routes
+Separate endpoints per timeframe for optimal performance and caching
+Updated to use atomic batch operations with staleness detection
 """
-from fastapi import APIRouter, HTTPException, Depends, BackgroundTasks
+
+from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
-from typing import List, Dict, Any, Optional
-from datetime import datetime
+from typing import List, Dict, Any
 import logging
 
 from core.database import get_db
-from models.sector_sentiment import SectorSentiment
-from models.stock_data import StockData
-from services.cache_service import get_cache_service
-from services.analysis_scheduler import get_analysis_scheduler
-from services.sector_calculator import get_sector_calculator
-from services.stock_ranker import get_stock_ranker
+from services.data_freshness_service import get_freshness_service, DataFreshnessService
 
-router = APIRouter()
+router = APIRouter(prefix="/sectors", tags=["sectors"])
 logger = logging.getLogger(__name__)
 
-@router.get("/sectors")
-async def get_all_sectors(
-    use_cache: bool = True,
-    db: Session = Depends(get_db)
+
+@router.get("/1day/", response_model=Dict[str, Any])
+async def get_all_sectors_1day(
+    include_stale: bool = True,
+    db: Session = Depends(get_db),
+    freshness_service: DataFreshnessService = Depends(get_freshness_service),
 ):
     """
-    Get all sector sentiment data for the main dashboard
-    Enhanced with Redis caching for sub-1-second response times
+    Get all sector sentiment data for 1day timeframe
+    Returns all 11 sectors with unified staleness flag for UI gray card display
     """
     try:
-        # Try cache first if enabled
-        if use_cache:
-            try:
-                cache_service = get_cache_service()
-                cached_data = await cache_service.get_cached_all_sectors()
-                
-                if cached_data:
-                    logger.debug("Returning cached sector data")
-                    return {
-                        "sectors": cached_data.get("sectors", {}),
-                        "timestamp": cached_data.get("cached_at"),
-                        "total_sectors": len(cached_data.get("sectors", {})),
-                        "source": "cache",
-                        "cache_ttl": cached_data.get("cache_ttl")
-                    }
-            except Exception as e:
-                logger.warning(f"Cache lookup failed, falling back to database: {e}")
-        
-        # Fallback to database
-        sectors = db.query(SectorSentiment).all()
-        
-        if not sectors:
-            # Return default sectors if none exist
-            default_data = get_default_sectors()
-            # Cache the default data
-            if use_cache:
-                try:
-                    cache_service = get_cache_service()
-                    await cache_service.cache_all_sectors(default_data["sectors"])
-                except Exception as e:
-                    logger.warning(f"Failed to cache default sectors: {e}")
-            return default_data
-        
-        # Format sectors for frontend
-        sector_data = {}
-        for sector in sectors:
-            # Get top stocks for this sector
-            top_stocks = await _get_sector_top_stocks(sector.sector, db)
-            
-            sector_info = {
-                "sector": sector.sector,
-                "sentiment_score": float(sector.sentiment_score) if sector.sentiment_score else 0.0,
-                "color_classification": sector.color_classification,
-                "confidence_level": float(sector.confidence_level) if sector.confidence_level else 0.5,
-                "trading_signal": _get_trading_signal_from_color(sector.color_classification),
-                "timeframe_scores": {
-                    "30min": float(sector.timeframe_30min) if sector.timeframe_30min else 0.0,
-                    "1day": float(sector.timeframe_1day) if sector.timeframe_1day else 0.0,
-                    "3day": float(sector.timeframe_3day) if sector.timeframe_3day else 0.0,
-                    "1week": float(sector.timeframe_1week) if sector.timeframe_1week else 0.0
-                },
-                "last_updated": sector.last_updated.isoformat() if sector.last_updated else datetime.utcnow().isoformat(),
-                "stock_count": len(top_stocks.get("all_stocks", [])),
-                "top_bullish": top_stocks.get("top_bullish", []),
-                "top_bearish": top_stocks.get("top_bearish", [])
-            }
-            sector_data[sector.sector] = sector_info
-        
-        result = {
-            "sectors": sector_data,
-            "timestamp": datetime.utcnow().isoformat(),
-            "total_sectors": len(sector_data),
-            "source": "database"
-        }
-        
-        # Cache the result
-        if use_cache:
-            try:
-                cache_service = get_cache_service()
-                await cache_service.cache_all_sectors(sector_data)
-                logger.debug("Cached fresh sector data")
-            except Exception as e:
-                logger.warning(f"Failed to cache sector data: {e}")
-        
-        return result
-        
-    except Exception as e:
-        logger.error(f"Failed to get sectors: {e}")
-        raise HTTPException(status_code=500, detail=f"Failed to get sectors: {str(e)}")
 
-async def _get_sector_top_stocks(sector: str, db: Session) -> Dict[str, Any]:
-    """Helper function to get top stocks for a sector"""
-    try:
-        # Get stocks with rankings for this sector
-        bullish_stocks = db.query(StockData).filter(
-            StockData.sector == sector,
-            StockData.bullish_rank.isnot(None)
-        ).order_by(StockData.bullish_rank).limit(3).all()
-        
-        bearish_stocks = db.query(StockData).filter(
-            StockData.sector == sector,
-            StockData.bearish_rank.isnot(None)
-        ).order_by(StockData.bearish_rank).limit(3).all()
-        
-        all_stocks = db.query(StockData).filter(StockData.sector == sector).all()
-        
-        return {
-            "top_bullish": [
-                {
-                    "symbol": stock.symbol,
-                    "change_percent": float(stock.price_change_percent) if stock.price_change_percent else 0.0,
-                    "volume_ratio": float(stock.volume) / float(stock.avg_daily_volume) if stock.avg_daily_volume else 1.0
-                }
-                for stock in bullish_stocks
-            ],
-            "top_bearish": [
-                {
-                    "symbol": stock.symbol,
-                    "change_percent": float(stock.price_change_percent) if stock.price_change_percent else 0.0,
-                    "volume_ratio": float(stock.volume) / float(stock.avg_daily_volume) if stock.avg_daily_volume else 1.0
-                }
-                for stock in bearish_stocks
-            ],
-            "all_stocks": all_stocks
-        }
-    except Exception as e:
-        logger.warning(f"Failed to get top stocks for {sector}: {e}")
-        return {"top_bullish": [], "top_bearish": [], "all_stocks": []}
+        # Get latest complete batch for 1day timeframe
+        batch_records, is_stale = freshness_service.get_latest_complete_batch(
+            db, timeframe="1day"
+        )
 
-def _get_trading_signal_from_color(color_classification: str) -> str:
-    """Convert color classification to trading signal"""
-    signal_mapping = {
-        "dark_red": "PRIME_SHORTING_ENVIRONMENT",
-        "light_red": "GOOD_SHORTING_ENVIRONMENT",
-        "blue_neutral": "NEUTRAL_CAUTIOUS",
-        "light_green": "AVOID_SHORTS",
-        "dark_green": "DO_NOT_SHORT"
-    }
-    return signal_mapping.get(color_classification, "NEUTRAL_CAUTIOUS")
+        if not batch_records:
+            raise HTTPException(
+                status_code=404,
+                detail="No complete sector sentiment batches found for 1day timeframe",
+            )
 
-@router.get("/sectors/{sector_name}")
-async def get_sector_details(sector_name: str, db: Session = Depends(get_db)):
-    """Get detailed information for a specific sector"""
-    try:
-        # Get sector sentiment
-        sector = db.query(SectorSentiment).filter(SectorSentiment.sector == sector_name).first()
-        
-        if not sector:
-            raise HTTPException(status_code=404, detail=f"Sector '{sector_name}' not found")
-        
-        # Get top stocks for this sector
-        top_stocks = db.query(StockData).filter(StockData.sector == sector_name).all()
-        
-        # Format bullish and bearish stocks
-        bullish_stocks = []
-        bearish_stocks = []
-        
-        for stock in top_stocks:
-            stock_data = stock.get_display_data()
-            if stock.price_change_percent > 0:
-                bullish_stocks.append(stock_data)
-            else:
-                bearish_stocks.append(stock_data)
-        
-        # Sort by performance
-        bullish_stocks.sort(key=lambda x: x["price_change_percent"], reverse=True)
-        bearish_stocks.sort(key=lambda x: x["price_change_percent"])
-        
-        return {
-            "sector": sector_name,
-            "sentiment": {
-                "score": sector.sentiment_score,
-                "color": sector.color_classification,
-                "confidence": sector.confidence_level,
-                "trading_signal": sector.trading_signal,
-                "description": sector.sentiment_description
+        # If caller doesn't want stale data and we only have stale data
+        if not include_stale and is_stale:
+            raise HTTPException(
+                status_code=410,
+                detail="Latest 1day data is stale. Refresh analysis recommended.",
+            )
+
+        # Validate batch integrity
+        integrity = freshness_service.validate_batch_integrity(batch_records)
+        if not integrity["valid"]:
+            logger.warning(f"Batch integrity issues for 1day: {integrity['issues']}")
+
+        # Convert to response format
+        sectors = [record.to_dict() for record in batch_records]
+
+        # Get batch age information
+        batch_age = freshness_service.get_batch_age_info(batch_records[0].timestamp)
+
+        response = {
+            "sectors": sectors,
+            "metadata": {
+                "batch_id": batch_records[0].batch_id,
+                "timestamp": batch_records[0].timestamp.isoformat(),
+                "timeframe": "1day",
+                "is_stale": is_stale,
+                "staleness_threshold_hours": 1,
+                "age_minutes": batch_age["age_minutes"],
+                "sector_count": len(batch_records),
+                "integrity_valid": integrity["valid"],
+                "integrity_issues": integrity.get("issues", []),
             },
-            "timeframes": sector.get_timeframe_summary(),
-            "top_stocks": {
-                "bullish": bullish_stocks[:3],  # Top 3 bullish
-                "bearish": bearish_stocks[:3]   # Top 3 bearish
-            },
-            "last_updated": sector.last_updated.isoformat() if sector.last_updated else None,
-            "is_stale": sector.is_stale
         }
-        
+
+        if is_stale:
+            response["warning"] = (
+                "Data is stale for 1day timeframe. Consider refreshing analysis."
+            )
+
+        logger.info(
+            f"Served {len(sectors)} sectors for 1day timeframe "
+            f"from batch {batch_records[0].batch_id} (stale: {is_stale})"
+        )
+        return response
+
     except HTTPException:
         raise
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Failed to get sector details: {str(e)}")
+        logger.error(f"Error getting all sectors for 1day: {e}")
+        raise HTTPException(status_code=500, detail="Internal server error")
 
-@router.post("/sectors/refresh")
-async def refresh_sector_analysis(db: Session = Depends(get_db)):
+
+@router.get("/1day/{sector_name}", response_model=Dict[str, Any])
+async def get_sector_details_1day(
+    sector_name: str,
+    include_stale: bool = True,
+    db: Session = Depends(get_db),
+    freshness_service: DataFreshnessService = Depends(get_freshness_service),
+):
     """
-    Trigger on-demand sector analysis refresh
-    NOTE: This endpoint is deprecated. Use /api/analysis/refresh-sectors instead.
+    Get detailed information for a specific sector from 1day timeframe
     """
     try:
-        # Redirect to new analysis endpoint
-        return {
-            "message": "This endpoint is deprecated. Use /api/analysis/refresh-sectors instead.",
-            "status": "deprecated",
-            "redirect": "/api/analysis/refresh-sectors",
-            "timestamp": datetime.utcnow().isoformat()
+
+        # Get latest complete batch for 1day timeframe
+        batch_records, is_stale = freshness_service.get_latest_complete_batch(
+            db, timeframe="1day"
+        )
+
+        if not batch_records:
+            raise HTTPException(
+                status_code=404,
+                detail="No complete sector sentiment batches found for 1day timeframe",
+            )
+
+        # Find the specific sector in the batch
+        sector_record = None
+        for record in batch_records:
+            if record.sector == sector_name:
+                sector_record = record
+                break
+
+        if not sector_record:
+            raise HTTPException(
+                status_code=404,
+                detail=f"Sector '{sector_name}' not found in latest 1day batch",
+            )
+
+        # If caller doesn't want stale data and we only have stale data
+        if not include_stale and is_stale:
+            raise HTTPException(
+                status_code=410,
+                detail="Latest 1day data is stale. Refresh analysis recommended.",
+            )
+
+        # Get batch age information
+        batch_age = freshness_service.get_batch_age_info(sector_record.timestamp)
+
+        # Build detailed response
+        sector_dict = sector_record.to_dict()
+
+        response = {
+            "sector": sector_dict,
+            "metadata": {
+                "batch_id": sector_record.batch_id,
+                "timestamp": sector_record.timestamp.isoformat(),
+                "timeframe": "1day",
+                "is_stale": is_stale,
+                "staleness_threshold_hours": 1,
+                "age_minutes": batch_age["age_minutes"],
+                "batch_contains_all_sectors": len(batch_records) == 11,
+            },
         }
-        
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Failed to refresh sectors: {str(e)}")
 
-@router.get("/sectors/{sector_name}/stocks")
-async def get_sector_stocks(sector_name: str, db: Session = Depends(get_db)):
-    """Get all stocks in a specific sector"""
+        if is_stale:
+            response["warning"] = (
+                "Data is stale for 1day timeframe. Consider refreshing analysis."
+            )
+
+        logger.info(
+            f"Served sector {sector_name} for 1day timeframe "
+            f"from batch {sector_record.batch_id} (stale: {is_stale})"
+        )
+        return response
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error getting sector {sector_name} for 1day: {e}")
+        raise HTTPException(status_code=500, detail="Internal server error")
+
+
+@router.get("/1day/batch/summaries", response_model=List[Dict[str, Any]])
+async def get_batch_summaries_1day(
+    limit: int = 5,
+    db: Session = Depends(get_db),
+    freshness_service: DataFreshnessService = Depends(get_freshness_service),
+):
+    """
+    Get summaries of recent 1day analysis batches for monitoring/debugging
+    """
     try:
-        stocks = db.query(StockData).filter(StockData.sector == sector_name).all()
-        
-        if not stocks:
+        summaries = freshness_service.get_all_batch_summaries(
+            db, timeframe="1day", limit=limit
+        )
+
+        logger.info(f"Served {len(summaries)} batch summaries for 1day timeframe")
+        return summaries
+
+    except Exception as e:
+        logger.error(f"Error getting batch summaries for 1day: {e}")
+        raise HTTPException(status_code=500, detail="Internal server error")
+
+
+@router.get("/1day/status/freshness", response_model=Dict[str, Any])
+async def get_freshness_status_1day(
+    db: Session = Depends(get_db),
+    freshness_service: DataFreshnessService = Depends(get_freshness_service),
+):
+    """
+    Get overall data freshness status for 1day timeframe
+    """
+    try:
+
+        # Get latest batch info for 1day timeframe
+        batch_records, is_stale = freshness_service.get_latest_complete_batch(
+            db, timeframe="1day"
+        )
+
+        if not batch_records:
             return {
-                "sector": sector_name,
-                "stocks": [],
-                "count": 0,
-                "message": f"No stocks found for sector '{sector_name}'"
+                "status": "no_data",
+                "message": "No sector sentiment data available for 1day timeframe",
+                "recommendation": "Run initial analysis",
+                "last_analysis": None,
+                "timeframe": "1day",
             }
-        
-        # Format stocks for response
-        stock_data = []
-        for stock in stocks:
-            stock_info = stock.get_display_data()
-            stock_data.append(stock_info)
-        
-        # Sort by performance (descending)
-        stock_data.sort(key=lambda x: x["price_change_percent"], reverse=True)
-        
+
+        # Get age details
+        batch_age = freshness_service.get_batch_age_info(batch_records[0].timestamp)
+
+        # Determine status and recommendation
+        if is_stale:
+            if batch_age["age_minutes"] > 120:  # >2 hours
+                status = "very_stale"
+                recommendation = "Immediate refresh strongly recommended"
+            else:
+                status = "stale"
+                recommendation = "Refresh recommended"
+        else:
+            status = "fresh"
+            recommendation = "Data is current"
+
+        return {
+            "status": status,
+            "is_stale": is_stale,
+            "age_minutes": batch_age["age_minutes"],
+            "staleness_threshold_hours": 1,
+            "last_analysis": batch_records[0].timestamp.isoformat(),
+            "batch_id": batch_records[0].batch_id,
+            "sector_count": len(batch_records),
+            "timeframe": "1day",
+            "recommendation": recommendation,
+            "message": f"Data for 1day timeframe is {batch_age['age_minutes']:.1f} minutes old",
+        }
+
+    except Exception as e:
+        logger.error(f"Error getting freshness status for 1day: {e}")
+        raise HTTPException(status_code=500, detail="Internal server error")
+
+
+@router.get("/comparison/{sector_name}", response_model=Dict[str, Any])
+async def get_sector_timeframe_comparison(
+    sector_name: str, 
+    db: Session = Depends(get_db),
+    freshness_service: DataFreshnessService = Depends(get_freshness_service),
+):
+    """
+    Get sentiment score comparison across all timeframes for a specific sector
+    Lightweight endpoint for cross-timeframe analysis
+    """
+    try:
+        comparison = {}
+        valid_timeframes = ["30min", "1day", "3day", "1week"]
+
+        for timeframe in valid_timeframes:
+            try:
+                batch_records, is_stale = freshness_service.get_latest_complete_batch(
+                    db, timeframe=timeframe
+                )
+
+                # Find the sector in the batch
+                sector_record = None
+                for record in batch_records:
+                    if record.sector == sector_name:
+                        sector_record = record
+                        break
+
+                if sector_record:
+                    batch_age = freshness_service.get_batch_age_info(
+                        sector_record.timestamp
+                    )
+                    comparison[timeframe] = {
+                        "sentiment_score": sector_record.sentiment_score,
+                        "age_minutes": batch_age["age_minutes"],
+                        "is_stale": is_stale,
+                        "batch_id": sector_record.batch_id,
+                    }
+                else:
+                    comparison[timeframe] = {
+                        "sentiment_score": None,
+                        "error": f"Sector {sector_name} not found in {timeframe} batch",
+                    }
+
+            except Exception as e:
+                comparison[timeframe] = {
+                    "sentiment_score": None,
+                    "error": f"Failed to get {timeframe} data: {str(e)}",
+                }
+
         return {
             "sector": sector_name,
-            "stocks": stock_data,
-            "count": len(stock_data),
-            "timestamp": datetime.utcnow().isoformat()
+            "timeframe_comparison": comparison,
+            "valid_timeframes": valid_timeframes,
         }
-        
+
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Failed to get sector stocks: {str(e)}")
-
-def get_default_sectors() -> Dict[str, Any]:
-    """Return default sector data when no sectors exist in database"""
-    default_sectors = [
-        "technology", "healthcare", "energy", "financial", 
-        "consumer_discretionary", "industrials", "materials", "utilities"
-    ]
-    
-    sector_data = {}
-    for sector in default_sectors:
-        sector_data[sector] = {
-            "sector": sector,
-            "sentiment_score": 0.0,
-            "color_classification": "blue_neutral",
-            "confidence_level": 0.5,
-            "trading_signal": "NEUTRAL_CAUTIOUS",
-            "timeframe_scores": {
-                "30min": 0.0,
-                "1day": 0.0,
-                "3day": 0.0,
-                "1week": 0.0
-            },
-            "last_updated": datetime.utcnow().isoformat(),
-            "stock_count": 0,
-            "top_bullish": [],
-            "top_bearish": []
-        }
-    
-    return {
-        "sectors": sector_data,
-        "timestamp": datetime.utcnow().isoformat(),
-        "total_sectors": len(sector_data),
-        "source": "default"
-    }
-
-
-# DEPRECATED: These endpoints have been moved to dedicated routers
-# Use /api/analysis/on-demand instead of /api/sectors/analysis/on-demand
-# Use /api/analysis/status instead of /api/sectors/analysis/status  
-# Use /api/cache/stats instead of /api/sectors/cache/stats
-# Use /api/cache/clear instead of /api/sectors/cache 
+        logger.error(f"Error getting timeframe comparison for {sector_name}: {e}")
+        raise HTTPException(status_code=500, detail="Internal server error")

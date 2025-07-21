@@ -17,10 +17,10 @@ class TestStocksRouter:
     def test_get_all_stocks_success(self, client: TestClient):
         """Test GET /api/stocks - universe listing"""
         response = client.get("/api/stocks")
-        
+
         assert response.status_code == 200
         data = response.json()
-        
+
         # Check response structure
         assert "stocks" in data
         assert "total_count" in data
@@ -28,11 +28,11 @@ class TestStocksRouter:
         assert "skip" in data
         assert "limit" in data
         assert "timestamp" in data
-        
+
         # Should have stocks data
         stocks = data["stocks"]
         assert isinstance(stocks, list)
-        
+
         # Check pagination defaults
         assert data["skip"] == 0
         assert data["limit"] == 50
@@ -40,10 +40,10 @@ class TestStocksRouter:
     def test_get_all_stocks_pagination(self, client: TestClient):
         """Test GET /api/stocks - pagination functionality"""
         response = client.get("/api/stocks?skip=10&limit=20")
-        
+
         assert response.status_code == 200
         data = response.json()
-        
+
         # Check pagination parameters
         assert data["skip"] == 10
         assert data["limit"] == 20
@@ -52,13 +52,13 @@ class TestStocksRouter:
     def test_get_all_stocks_sector_filtering(self, client: TestClient):
         """Test GET /api/stocks - sector filtering"""
         response = client.get("/api/stocks?sector=technology")
-        
+
         assert response.status_code == 200
         data = response.json()
-        
+
         # Check sector filter
         assert data["sector_filter"] == "technology"
-        
+
         # All returned stocks should be in technology sector
         for stock in data["stocks"]:
             assert stock["sector"] == "technology"
@@ -67,22 +67,22 @@ class TestStocksRouter:
         """Test GET /api/stocks - limit validation"""
         # Test limit too high
         response = client.get("/api/stocks?limit=1000")
-        
+
         assert response.status_code == 422  # Validation error
-        
+
         # Test limit too low
         response = client.get("/api/stocks?limit=0")
-        
+
         assert response.status_code == 422  # Validation error
 
     def test_get_stock_details_success(self, client: TestClient):
         """Test GET /api/stocks/{symbol} - stock details"""
         # Test with a real stock that might exist
         response = client.get("/api/stocks/SOUN")
-        
+
         # This endpoint might return 404 if stock doesn't exist
         assert response.status_code in [200, 404]
-        
+
         if response.status_code == 200:
             data = response.json()
             assert "symbol" in data
@@ -92,17 +92,17 @@ class TestStocksRouter:
     def test_get_stock_details_invalid_symbol(self, client: TestClient):
         """Test GET /api/stocks/{symbol} - invalid symbol"""
         response = client.get("/api/stocks/INVALID")
-        
+
         # Should return 404 for invalid symbol
         assert response.status_code == 404
 
     def test_get_universe_stats_success(self, client: TestClient):
         """Test GET /api/stocks/universe/stats - universe statistics"""
         response = client.get("/api/stocks/universe/stats")
-        
+
         # This endpoint might return 500 if not properly configured
         assert response.status_code in [200, 500]
-        
+
         if response.status_code == 200:
             data = response.json()
             # Check response structure
@@ -113,10 +113,10 @@ class TestStocksRouter:
     def test_get_universe_stats_sector_validation(self, client: TestClient):
         """Test GET /api/stocks/universe/stats - sector breakdown validation"""
         response = client.get("/api/stocks/universe/stats")
-        
+
         # This endpoint might return 500 if not properly configured
         assert response.status_code in [200, 500]
-        
+
         if response.status_code == 200:
             data = response.json()
             # Check sector breakdown
@@ -126,10 +126,10 @@ class TestStocksRouter:
     def test_get_gap_stocks_success(self, client: TestClient):
         """Test GET /api/stocks/gaps - gap detection"""
         response = client.get("/api/stocks/gaps")
-        
+
         # This endpoint might return 404 if not properly configured
         assert response.status_code in [200, 404]
-        
+
         if response.status_code == 200:
             data = response.json()
             assert "gap_stocks" in data
@@ -138,10 +138,10 @@ class TestStocksRouter:
     def test_get_gap_stocks_large_gaps(self, client: TestClient):
         """Test GET /api/stocks/gaps - large gap filtering"""
         response = client.get("/api/stocks/gaps?min_gap=50")
-        
+
         # This endpoint might return 404 if not properly configured
         assert response.status_code in [200, 404]
-        
+
         if response.status_code == 200:
             data = response.json()
             # Should only return stocks with gaps >= 50%
@@ -151,10 +151,10 @@ class TestStocksRouter:
     def test_get_gap_stocks_extreme_gaps(self, client: TestClient):
         """Test GET /api/stocks/gaps - extreme gap filtering"""
         response = client.get("/api/stocks/gaps?min_gap=60")
-        
+
         # This endpoint might return 404 if not properly configured
         assert response.status_code in [200, 404]
-        
+
         if response.status_code == 200:
             data = response.json()
             # Should only return stocks with gaps >= 60%
@@ -164,10 +164,10 @@ class TestStocksRouter:
     def test_get_volume_leaders_success(self, client: TestClient):
         """Test GET /api/stocks/volume-leaders - volume analysis"""
         response = client.get("/api/stocks/volume-leaders")
-        
+
         # This endpoint might return 404 if not properly configured
         assert response.status_code in [200, 404]
-        
+
         if response.status_code == 200:
             data = response.json()
             # Check response structure
@@ -179,23 +179,23 @@ class TestStocksRouter:
         """Test GET /api/stocks/volume-leaders - limit validation"""
         # Test limit too high
         response = client.get("/api/stocks/volume-leaders?limit=1000")
-        
+
         # This endpoint might return 404 or 422
         assert response.status_code in [404, 422]
-        
+
         # Test valid limit
         response = client.get("/api/stocks/volume-leaders?limit=50")
-        
+
         # This endpoint might return 404 if not properly configured
         assert response.status_code in [200, 404]
 
     def test_get_volume_leaders_volume_calculations(self, client: TestClient):
         """Test GET /api/stocks/volume-leaders - volume calculations"""
         response = client.get("/api/stocks/volume-leaders")
-        
+
         # This endpoint might return 404 if not properly configured
         assert response.status_code in [200, 404]
-        
+
         if response.status_code == 200:
             data = response.json()
             # Check volume leader structure
@@ -204,17 +204,17 @@ class TestStocksRouter:
                 assert "volume_ratio" in leader
                 assert "current_volume" in leader
                 assert "avg_daily_volume" in leader
-                
+
                 # Volume ratio should be reasonable
                 assert leader["volume_ratio"] > 0
 
     def test_refresh_universe_success(self, client: TestClient):
         """Test POST /api/stocks/universe/refresh - universe refresh"""
         response = client.post("/api/stocks/universe/refresh")
-        
+
         # This endpoint might return 500 if not properly configured
         assert response.status_code in [200, 500]
-        
+
         if response.status_code == 200:
             data = response.json()
             assert "status" in data
@@ -223,10 +223,10 @@ class TestStocksRouter:
     def test_refresh_universe_status(self, client: TestClient):
         """Test POST /api/stocks/universe/refresh - refresh status handling"""
         response = client.post("/api/stocks/universe/refresh")
-        
+
         # This endpoint might return 500 if not properly configured
         assert response.status_code in [200, 500]
-        
+
         if response.status_code == 200:
             data = response.json()
             assert "status" in data
@@ -237,31 +237,33 @@ class TestStocksRouter:
         start_time = time.time()
         response = client.post("/api/stocks/universe/refresh")
         end_time = time.time()
-        
+
         response_time = end_time - start_time
-        
+
         # This endpoint might return 500 if not properly configured
         assert response.status_code in [200, 500]
         # Refresh trigger should be reasonable (< 2 seconds)
-        assert response_time < 2.0, f"Universe refresh trigger took {response_time}s, should be < 2s"
+        assert (
+            response_time < 2.0
+        ), f"Universe refresh trigger took {response_time}s, should be < 2s"
 
     def test_stock_universe_size_validation(self, client: TestClient):
         """Test stock universe size validation"""
         response = client.get("/api/stocks/universe/stats")
-        
+
         # This endpoint might return 500 if not properly configured
         assert response.status_code in [200, 500]
-        
+
         if response.status_code == 200:
             data = response.json()
-            
+
             # Check universe size constraints
             total_stocks = data["total_stocks"]
             target_size = data["target_universe_size"]
-            
+
             # Should be within reasonable bounds
             assert 0 <= total_stocks <= target_size * 1.2  # Allow 20% over target
-            
+
             # Coverage percentage should be reasonable
             coverage = data["coverage_percentage"]
             assert 0 <= coverage <= 100
@@ -269,17 +271,17 @@ class TestStocksRouter:
     def test_stock_market_cap_filtering(self, client: TestClient):
         """Test stock market cap filtering"""
         response = client.get("/api/stocks")
-        
+
         assert response.status_code == 200
         data = response.json()
-        
+
         # Check market cap filtering for returned stocks
         for stock in data["stocks"]:
             market_cap = stock["market_cap"]
-            
+
             # Should be within small-cap range ($10M - $2B)
             assert 10_000_000 <= market_cap <= 2_000_000_000
-            
+
             # Check micro vs small cap classification
             if stock["is_micro_cap"]:
                 assert market_cap < 300_000_000
@@ -289,16 +291,16 @@ class TestStocksRouter:
     def test_stock_volume_filtering(self, client: TestClient):
         """Test stock volume filtering"""
         response = client.get("/api/stocks")
-        
+
         assert response.status_code == 200
         data = response.json()
-        
+
         # Check volume filtering for returned stocks
         for stock in data["stocks"]:
             avg_volume = stock["avg_daily_volume"]
-            
+
             # Should meet minimum volume requirement (1M+ shares)
             assert avg_volume >= 1_000_000
-            
+
             # Volume should be reasonable (not excessive)
-            assert avg_volume <= 100_000_000  # 100M max daily volume 
+            assert avg_volume <= 100_000_000  # 100M max daily volume

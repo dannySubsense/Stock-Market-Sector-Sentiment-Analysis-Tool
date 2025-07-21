@@ -7,7 +7,7 @@ Handles sector sentiment, top stocks, and analysis results caching
 from typing import Dict, Any, Optional, List
 import json
 import logging
-from datetime import datetime, timedelta
+from datetime import datetime
 import asyncio
 import redis.asyncio as aioredis
 from redis.exceptions import RedisError
@@ -25,6 +25,7 @@ CACHE_KEYS = {
     "analysis_result": "analysis_result:{analysis_id}",
     "market_status": "market_status",
     "last_update": "last_update:{data_type}",
+    "iwm_benchmark_1d": "iwm_benchmark_1d",
 }
 
 # Cache TTL settings (in seconds)
@@ -36,6 +37,7 @@ CACHE_TTL = {
     "analysis_result": 7200,  # 2 hours
     "market_status": 300,  # 5 minutes
     "quick_cache": 60,  # 1 minute for quick access
+    "iwm_benchmark_1d": 300,  # 5 minutes for IWM data
 }
 
 
@@ -50,6 +52,13 @@ class CacheService:
         self.redis_client: Optional[aioredis.Redis] = None
         self.connection_pool: Optional[aioredis.ConnectionPool] = None
         self.is_connected = False
+
+    def _ensure_redis_client(self) -> aioredis.Redis:
+        """Senior engineer pattern: Ensure redis_client is not None after connection check"""
+        if not self.is_connected or not self.redis_client:
+            raise RuntimeError("Redis client not connected")
+        assert self.redis_client is not None
+        return self.redis_client
 
     async def connect(self):
         """Connect to Redis"""
@@ -102,6 +111,8 @@ class CacheService:
             if not self.is_connected or not self.redis_client:
                 return False
 
+            redis_client = self._ensure_redis_client()
+
             cache_key = CACHE_KEYS["sector_sentiment"].format(sector=sector)
 
             # Add timestamp for freshness tracking
@@ -112,7 +123,7 @@ class CacheService:
             }
 
             # Store in Redis with TTL
-            await self.redis_client.setex(
+            await redis_client.setex(
                 cache_key, CACHE_TTL["sector_sentiment"], json.dumps(cache_data)
             )
 
@@ -134,8 +145,10 @@ class CacheService:
             if not self.is_connected or not self.redis_client:
                 return None
 
+            redis_client = self._ensure_redis_client()
+
             cache_key = CACHE_KEYS["sector_sentiment"].format(sector=sector)
-            cached_data = await self.redis_client.get(cache_key)
+            cached_data = await redis_client.get(cache_key)
 
             if cached_data:
                 data = json.loads(cached_data)
@@ -152,8 +165,10 @@ class CacheService:
     async def cache_all_sectors(self, sectors_data: Dict[str, Any]) -> bool:
         """Cache all sectors data for dashboard grid"""
         try:
-            if not self.is_connected:
+            if not self.is_connected or not self.redis_client:
                 return False
+
+            redis_client = self._ensure_redis_client()
 
             cache_key = CACHE_KEYS["all_sectors"]
 
@@ -166,7 +181,7 @@ class CacheService:
             }
 
             # Store with TTL
-            await self.redis_client.setex(
+            await redis_client.setex(
                 cache_key, CACHE_TTL["all_sectors"], json.dumps(cache_data)
             )
 
@@ -180,11 +195,13 @@ class CacheService:
     async def get_cached_all_sectors(self) -> Optional[Dict[str, Any]]:
         """Get cached all sectors data for dashboard"""
         try:
-            if not self.is_connected:
+            if not self.is_connected or not self.redis_client:
                 return None
 
+            redis_client = self._ensure_redis_client()
+
             cache_key = CACHE_KEYS["all_sectors"]
-            cached_data = await self.redis_client.get(cache_key)
+            cached_data = await redis_client.get(cache_key)
 
             if cached_data:
                 data = json.loads(cached_data)
@@ -203,8 +220,10 @@ class CacheService:
     ) -> bool:
         """Cache top bullish/bearish stocks for a sector"""
         try:
-            if not self.is_connected:
+            if not self.is_connected or not self.redis_client:
                 return False
+
+            redis_client = self._ensure_redis_client()
 
             cache_key = CACHE_KEYS["sector_top_stocks"].format(sector=sector)
 
@@ -216,7 +235,7 @@ class CacheService:
                 "cache_ttl": CACHE_TTL["sector_top_stocks"],
             }
 
-            await self.redis_client.setex(
+            await redis_client.setex(
                 cache_key, CACHE_TTL["sector_top_stocks"], json.dumps(cache_data)
             )
 
@@ -232,11 +251,13 @@ class CacheService:
     ) -> Optional[Dict[str, Any]]:
         """Get cached top stocks for a sector"""
         try:
-            if not self.is_connected:
+            if not self.is_connected or not self.redis_client:
                 return None
 
+            redis_client = self._ensure_redis_client()
+
             cache_key = CACHE_KEYS["sector_top_stocks"].format(sector=sector)
-            cached_data = await self.redis_client.get(cache_key)
+            cached_data = await redis_client.get(cache_key)
 
             if cached_data:
                 data = json.loads(cached_data)
@@ -252,8 +273,10 @@ class CacheService:
     async def cache_stock_universe(self, universe_data: List[Dict[str, Any]]) -> bool:
         """Cache stock universe for fast access"""
         try:
-            if not self.is_connected:
+            if not self.is_connected or not self.redis_client:
                 return False
+
+            redis_client = self._ensure_redis_client()
 
             cache_key = CACHE_KEYS["stock_universe"]
 
@@ -264,7 +287,7 @@ class CacheService:
                 "stock_count": len(universe_data),
             }
 
-            await self.redis_client.setex(
+            await redis_client.setex(
                 cache_key, CACHE_TTL["stock_universe"], json.dumps(cache_data)
             )
 
@@ -278,11 +301,13 @@ class CacheService:
     async def get_cached_stock_universe(self) -> Optional[Dict[str, Any]]:
         """Get cached stock universe"""
         try:
-            if not self.is_connected:
+            if not self.is_connected or not self.redis_client:
                 return None
 
+            redis_client = self._ensure_redis_client()
+
             cache_key = CACHE_KEYS["stock_universe"]
-            cached_data = await self.redis_client.get(cache_key)
+            cached_data = await redis_client.get(cache_key)
 
             if cached_data:
                 data = json.loads(cached_data)
@@ -295,13 +320,82 @@ class CacheService:
             logger.error(f"Error getting cached stock universe: {e}")
             return None
 
+    async def cache_iwm_benchmark_1d(self, iwm_data: Dict[str, Any]) -> bool:
+        """Cache IWM benchmark data for 1D calculations"""
+        try:
+            if not self.is_connected or not self.redis_client:
+                return False
+
+            cache_key = CACHE_KEYS["iwm_benchmark_1d"]
+
+            # Add timestamp for freshness tracking
+            cache_data = {
+                **iwm_data,
+                "cached_at": datetime.utcnow().isoformat(),
+                "cache_ttl": CACHE_TTL["iwm_benchmark_1d"],
+            }
+
+            # Store in Redis with TTL
+            await self.redis_client.setex(
+                cache_key, CACHE_TTL["iwm_benchmark_1d"], json.dumps(cache_data)
+            )
+
+            logger.debug("Cached IWM benchmark 1D data")
+            return True
+
+        except RedisError as e:
+            logger.error(f"Redis error caching IWM benchmark 1D data: {e}")
+            return False
+        except Exception as e:
+            logger.error(f"Error caching IWM benchmark 1D data: {e}")
+            return False
+
+    async def get_cached_iwm_benchmark_1d(self) -> Optional[Dict[str, Any]]:
+        """Get cached IWM benchmark 1D data"""
+        try:
+            if not self.is_connected or not self.redis_client:
+                return None
+
+            cache_key = CACHE_KEYS["iwm_benchmark_1d"]
+            cached_data = await self.redis_client.get(cache_key)
+
+            if cached_data:
+                data = json.loads(cached_data)
+                logger.debug("Cache hit for IWM benchmark 1D data")
+                return data
+
+            logger.debug("Cache miss for IWM benchmark 1D data")
+            return None
+
+        except Exception as e:
+            logger.error(f"Error getting cached IWM benchmark 1D data: {e}")
+            return None
+
+    async def invalidate_iwm_cache(self) -> bool:
+        """Invalidate IWM benchmark cache"""
+        try:
+            if not self.is_connected or not self.redis_client:
+                return False
+
+            cache_key = CACHE_KEYS["iwm_benchmark_1d"]
+            deleted_count = await self.redis_client.delete(cache_key)
+            logger.info(f"Invalidated IWM cache (deleted {deleted_count} keys)")
+
+            return True
+
+        except Exception as e:
+            logger.error(f"Error invalidating IWM cache: {e}")
+            return False
+
     async def cache_analysis_result(
         self, analysis_id: str, result_data: Dict[str, Any]
     ) -> bool:
         """Cache analysis result for progress tracking"""
         try:
-            if not self.is_connected:
+            if not self.is_connected or not self.redis_client:
                 return False
+
+            redis_client = self._ensure_redis_client()
 
             cache_key = CACHE_KEYS["analysis_result"].format(analysis_id=analysis_id)
 
@@ -311,7 +405,7 @@ class CacheService:
                 "cached_at": datetime.utcnow().isoformat(),
             }
 
-            await self.redis_client.setex(
+            await redis_client.setex(
                 cache_key, CACHE_TTL["analysis_result"], json.dumps(cache_data)
             )
 
@@ -327,11 +421,13 @@ class CacheService:
     ) -> Optional[Dict[str, Any]]:
         """Get cached analysis result"""
         try:
-            if not self.is_connected:
+            if not self.is_connected or not self.redis_client:
                 return None
 
+            redis_client = self._ensure_redis_client()
+
             cache_key = CACHE_KEYS["analysis_result"].format(analysis_id=analysis_id)
-            cached_data = await self.redis_client.get(cache_key)
+            cached_data = await redis_client.get(cache_key)
 
             if cached_data:
                 return json.loads(cached_data)
@@ -345,8 +441,10 @@ class CacheService:
     async def invalidate_sector_cache(self, sector: str) -> bool:
         """Invalidate cache for a specific sector"""
         try:
-            if not self.is_connected:
+            if not self.is_connected or not self.redis_client:
                 return False
+
+            redis_client = self._ensure_redis_client()
 
             keys_to_delete = [
                 CACHE_KEYS["sector_sentiment"].format(sector=sector),
@@ -354,7 +452,7 @@ class CacheService:
                 CACHE_KEYS["all_sectors"],  # Also invalidate all sectors
             ]
 
-            deleted_count = await self.redis_client.delete(*keys_to_delete)
+            deleted_count = await redis_client.delete(*keys_to_delete)
             logger.info(f"Invalidated {deleted_count} cache keys for sector {sector}")
 
             return True
@@ -366,8 +464,10 @@ class CacheService:
     async def invalidate_all_cache(self) -> bool:
         """Invalidate all cached data"""
         try:
-            if not self.is_connected:
+            if not self.is_connected or not self.redis_client:
                 return False
+
+            redis_client = self._ensure_redis_client()
 
             # Get all cache keys
             pattern_keys = []
@@ -378,11 +478,11 @@ class CacheService:
                     .replace("{analysis_id}", "*")
                     .replace("{data_type}", "*")
                 )
-                keys = await self.redis_client.keys(wildcard_pattern)
+                keys = await redis_client.keys(wildcard_pattern)
                 pattern_keys.extend(keys)
 
             if pattern_keys:
-                deleted_count = await self.redis_client.delete(*pattern_keys)
+                deleted_count = await redis_client.delete(*pattern_keys)
                 logger.info(f"Invalidated {deleted_count} total cache keys")
 
             return True
@@ -394,15 +494,15 @@ class CacheService:
     async def set_last_update_time(self, data_type: str) -> bool:
         """Set last update time for data freshness tracking"""
         try:
-            if not self.is_connected:
+            if not self.is_connected or not self.redis_client:
                 return False
+
+            redis_client = self._ensure_redis_client()
 
             cache_key = CACHE_KEYS["last_update"].format(data_type=data_type)
             timestamp = datetime.utcnow().isoformat()
 
-            await self.redis_client.setex(
-                cache_key, CACHE_TTL["analysis_result"], timestamp
-            )
+            await redis_client.setex(cache_key, CACHE_TTL["analysis_result"], timestamp)
 
             return True
 
@@ -413,11 +513,13 @@ class CacheService:
     async def get_last_update_time(self, data_type: str) -> Optional[datetime]:
         """Get last update time for data freshness"""
         try:
-            if not self.is_connected:
+            if not self.is_connected or not self.redis_client:
                 return None
 
+            redis_client = self._ensure_redis_client()
+
             cache_key = CACHE_KEYS["last_update"].format(data_type=data_type)
-            timestamp_str = await self.redis_client.get(cache_key)
+            timestamp_str = await redis_client.get(cache_key)
 
             if timestamp_str:
                 return datetime.fromisoformat(timestamp_str)
@@ -431,11 +533,13 @@ class CacheService:
     async def get_cache_stats(self) -> Dict[str, Any]:
         """Get cache statistics for monitoring"""
         try:
-            if not self.is_connected:
+            if not self.is_connected or not self.redis_client:
                 return {"status": "disconnected"}
 
+            redis_client = self._ensure_redis_client()
+
             # Get Redis info
-            redis_info = await self.redis_client.info()
+            redis_info = await redis_client.info()
 
             # Count cache keys by type
             key_counts = {}
@@ -446,7 +550,7 @@ class CacheService:
                     .replace("{analysis_id}", "*")
                     .replace("{data_type}", "*")
                 )
-                keys = await self.redis_client.keys(wildcard_pattern)
+                keys = await redis_client.keys(wildcard_pattern)
                 key_counts[key_type] = len(keys)
 
             return {
@@ -465,12 +569,14 @@ class CacheService:
     async def health_check(self) -> Dict[str, Any]:
         """Check cache service health"""
         try:
-            if not self.is_connected:
+            if not self.is_connected or not self.redis_client:
                 return {"status": "unhealthy", "message": "Not connected to Redis"}
+
+            redis_client = self._ensure_redis_client()
 
             # Test Redis connectivity
             start_time = datetime.utcnow()
-            await self.redis_client.ping()
+            await redis_client.ping()
             response_time = (datetime.utcnow() - start_time).total_seconds() * 1000
 
             return {
@@ -489,7 +595,6 @@ class CacheService:
     async def get_statistics(self) -> Dict[str, Any]:
         """Get comprehensive cache statistics"""
         try:
-            stats = await self.get_cache_stats()
             health = await self.health_check()
 
             return {

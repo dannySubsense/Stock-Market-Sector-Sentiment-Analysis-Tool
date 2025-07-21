@@ -21,18 +21,18 @@ async def test_proper_architecture():
     print("✅ MCP Client: Generic, no business logic")
     print("✅ UniverseBuilder: Contains sector sentiment criteria")
     print("=" * 60)
-    
+
     # Test 1: Generic MCP Client
     print("\n1️⃣ Testing Generic MCP Client...")
     client = FMPMCPClient()
-    
+
     # Test with custom criteria
     custom_criteria = {
         "marketCapMoreThan": "50000000",  # $50M
         "exchange": "NASDAQ",
-        "limit": "100"
+        "limit": "100",
     }
-    
+
     try:
         result = await client.get_stock_screener(custom_criteria)
         print(f"   📊 Custom criteria result: {result['count']} stocks")
@@ -41,40 +41,50 @@ async def test_proper_architecture():
         print(f"   ❌ MCP Client error: {e}")
     finally:
         await client.close()
-    
+
     # Test 2: Business Logic in UniverseBuilder
     print("\n2️⃣ Testing Business Logic in UniverseBuilder...")
     universe_builder = UniverseBuilder()
-    
+
     # Get sector sentiment criteria
     criteria = universe_builder.get_fmp_screening_criteria()
     print(f"   📋 Sector Sentiment Criteria:")
     for key, value in criteria.items():
         print(f"      • {key}: {value}")
-    
+
     # Test getting universe
     try:
         universe_result = await universe_builder.get_fmp_universe()
-        
+
         if universe_result["status"] == "success":
             universe_size = universe_result["count"]
             print(f"\n   📊 Universe Size: {universe_size} stocks")
-            print(f"   📈 vs Expected (~2780): {'✅ Match!' if 2700 <= universe_size <= 2850 else '❌ Different'}")
-            
+            print(
+                f"   📈 vs Expected (~2780): {'✅ Match!' if 2700 <= universe_size <= 2850 else '❌ Different'}"
+            )
+
             # Show sample
             if universe_result["stocks"]:
                 sample = universe_result["stocks"][0]
                 print(f"\n   📋 Sample stock:")
                 print(f"      Symbol: {sample.get('symbol', 'N/A')}")
-                print(f"      Market Cap: ${sample.get('marketCap', 'N/A'):,}" if isinstance(sample.get('marketCap'), (int, float)) else f"      Market Cap: {sample.get('marketCap', 'N/A')}")
-                print(f"      Volume: {sample.get('volume', 'N/A'):,}" if isinstance(sample.get('volume'), (int, float)) else f"      Volume: {sample.get('volume', 'N/A')}")
-                
+                print(
+                    f"      Market Cap: ${sample.get('marketCap', 'N/A'):,}"
+                    if isinstance(sample.get("marketCap"), (int, float))
+                    else f"      Market Cap: {sample.get('marketCap', 'N/A')}"
+                )
+                print(
+                    f"      Volume: {sample.get('volume', 'N/A'):,}"
+                    if isinstance(sample.get("volume"), (int, float))
+                    else f"      Volume: {sample.get('volume', 'N/A')}"
+                )
+
         else:
             print(f"   ❌ Universe error: {universe_result.get('message', 'Unknown')}")
-            
+
     except Exception as e:
         print(f"   ❌ UniverseBuilder error: {e}")
-    
+
     print(f"\n🎯 ARCHITECTURE SUMMARY:")
     print(f"   ✅ MCP Client: Agnostic, reusable, no business logic")
     print(f"   ✅ UniverseBuilder: Contains criteria, orchestrates universe building")
@@ -84,4 +94,4 @@ async def test_proper_architecture():
 
 
 if __name__ == "__main__":
-    asyncio.run(test_proper_architecture()) 
+    asyncio.run(test_proper_architecture())

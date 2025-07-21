@@ -1,0 +1,219 @@
+{
+  "test_summary": {
+    "symbols_tested": [
+      "SOUN",
+      "BBAI",
+      "PATH",
+      "OCUL",
+      "SMCI"
+    ],
+    "test_timestamp": "2025-07-19T15:25:41.917347",
+    "total_symbols": 5,
+    "successful_tests": 5
+  },
+  "individual_comparisons": [
+    {
+      "symbol": "SOUN",
+      "fmp_result": {
+        "success": true,
+        "response_time_ms": 159.00135040283203,
+        "data_quality_score": 1.0,
+        "validation_issues": [],
+        "error_message": null,
+        "data_preview": {
+          "price": 12.81,
+          "previousClose": 12.64,
+          "volume": 40945841,
+          "avgVolume": 36102174,
+          "marketCap": 5146217100,
+          "timestamp": 1752868801
+        }
+      },
+      "polygon_result": {
+        "success": true,
+        "response_time_ms": 216.34340286254883,
+        "data_quality_score": 1.0,
+        "validation_issues": [],
+        "error_message": null,
+        "data_preview": {
+          "price": 12.81,
+          "previousClose": 12.64,
+          "volume": 41741359.0,
+          "avgVolume": 49093130.0,
+          "timestamp": null
+        }
+      },
+      "data_consistency_score": 1.0,
+      "recommended_api": "FMP",
+      "recommendation_reason": "FMP faster response (159ms vs 216ms)"
+    },
+    {
+      "symbol": "BBAI",
+      "fmp_result": {
+        "success": true,
+        "response_time_ms": 37.41717338562012,
+        "data_quality_score": 1.0,
+        "validation_issues": [],
+        "error_message": null,
+        "data_preview": {
+          "price": 7.95,
+          "previousClose": 8.22,
+          "volume": 124567225,
+          "avgVolume": 158812508.8,
+          "marketCap": 2314952550,
+          "timestamp": 1752868802
+        }
+      },
+      "polygon_result": {
+        "success": true,
+        "response_time_ms": 63.51470947265625,
+        "data_quality_score": 1.0,
+        "validation_issues": [],
+        "error_message": null,
+        "data_preview": {
+          "price": 7.95,
+          "previousClose": 8.22,
+          "volume": 125673619.0,
+          "avgVolume": 212764190.0,
+          "timestamp": null
+        }
+      },
+      "data_consistency_score": 1.0,
+      "recommended_api": "FMP",
+      "recommendation_reason": "FMP faster response (37ms vs 64ms)"
+    },
+    {
+      "symbol": "PATH",
+      "fmp_result": {
+        "success": true,
+        "response_time_ms": 38.33913803100586,
+        "data_quality_score": 1.0,
+        "validation_issues": [],
+        "error_message": null,
+        "data_preview": {
+          "price": 12.59,
+          "previousClose": 12.33,
+          "volume": 14341733,
+          "avgVolume": 10662648,
+          "marketCap": 6736138945,
+          "timestamp": 1752868802
+        }
+      },
+      "polygon_result": {
+        "success": true,
+        "response_time_ms": 67.80123710632324,
+        "data_quality_score": 1.0,
+        "validation_issues": [],
+        "error_message": null,
+        "data_preview": {
+          "price": 12.59,
+          "previousClose": 12.33,
+          "volume": 16540545.0,
+          "avgVolume": 9115535.0,
+          "timestamp": null
+        }
+      },
+      "data_consistency_score": 1.0,
+      "recommended_api": "FMP",
+      "recommendation_reason": "FMP faster response (38ms vs 68ms)"
+    },
+    {
+      "symbol": "OCUL",
+      "fmp_result": {
+        "success": true,
+        "response_time_ms": 39.01958465576172,
+        "data_quality_score": 1.0,
+        "validation_issues": [],
+        "error_message": null,
+        "data_preview": {
+          "price": 11.33,
+          "previousClose": 11.38,
+          "volume": 2100126,
+          "avgVolume": 2205403,
+          "marketCap": 1804869000,
+          "timestamp": 1752868801
+        }
+      },
+      "polygon_result": {
+        "success": true,
+        "response_time_ms": 63.50970268249512,
+        "data_quality_score": 1.0,
+        "validation_issues": [],
+        "error_message": null,
+        "data_preview": {
+          "price": 11.33,
+          "previousClose": 11.38,
+          "volume": 2125857.0,
+          "avgVolume": 2656734.0,
+          "timestamp": null
+        }
+      },
+      "data_consistency_score": 1.0,
+      "recommended_api": "FMP",
+      "recommendation_reason": "FMP faster response (39ms vs 64ms)"
+    },
+    {
+      "symbol": "SMCI",
+      "fmp_result": {
+        "success": true,
+        "response_time_ms": 37.89258003234863,
+        "data_quality_score": 1.0,
+        "validation_issues": [],
+        "error_message": null,
+        "data_preview": {
+          "price": 51.77,
+          "previousClose": 52.75,
+          "volume": 31009352,
+          "avgVolume": 45868869,
+          "marketCap": 30897267860,
+          "timestamp": 1752868800
+        }
+      },
+      "polygon_result": {
+        "success": true,
+        "response_time_ms": 58.14385414123535,
+        "data_quality_score": 1.0,
+        "validation_issues": [],
+        "error_message": null,
+        "data_preview": {
+          "price": 51.77,
+          "previousClose": 52.75,
+          "volume": 31840440.0,
+          "avgVolume": 41375997.0,
+          "timestamp": null
+        }
+      },
+      "data_consistency_score": 1.0,
+      "recommended_api": "FMP",
+      "recommendation_reason": "FMP faster response (38ms vs 58ms)"
+    }
+  ],
+  "performance_analysis": {
+    "fmp": {
+      "avg_response_time_ms": 62.33396530151367,
+      "max_response_time_ms": 159.00135040283203,
+      "success_rate": 100.0
+    },
+    "polygon": {
+      "avg_response_time_ms": 93.86258125305176,
+      "max_response_time_ms": 216.34340286254883,
+      "success_rate": 100.0
+    }
+  },
+  "overall_recommendation": {
+    "recommended_primary_api": "FMP",
+    "confidence_percentage": 100.0,
+    "symbol_results": {
+      "fmp_wins": 5,
+      "polygon_wins": 0,
+      "ties": 0,
+      "failures": 0
+    },
+    "quality_metrics": {
+      "fmp_avg_data_quality": 1.0,
+      "polygon_avg_data_quality": 1.0,
+      "avg_data_consistency": 1.0
+    },
+    "recommendation_reasoning": "FMP performed better in 5/5 tests (100%); FMP average data quality: 1.00; Polygon average data quality: 1.00; Data consistency between APIs: 1.00"
+  }
+}
