@@ -69,24 +69,24 @@ class SectorDataService:
               AND su.is_active = true
         )
         SELECT symbol, changes_percentage, volume, price
-        FROM latest
-        WHERE rn = 1
-          AND changes_percentage >= {params['min_gap']}
-          AND changes_percentage <= {params['max_gap']}
-          AND volume >= {params['min_volume']}
+        FROM latest l
+        WHERE l.rn = 1
+          AND l.changes_percentage >= {params['min_gap']}
+          AND l.changes_percentage <= {params['max_gap']}
+          AND l.volume >= {params['min_volume']}
         """
 
         # Add optional volume max filter
         if params.get("max_volume"):
-            query += f" AND sp.volume <= {params['max_volume']}"
+            query += f" AND l.volume <= {params['max_volume']}"
 
         # Add price filters
-        query += f" AND sp.price >= {params['min_price']}"
+        query += f" AND l.price >= {params['min_price']}"
 
         if params.get("max_price"):
-            query += f" AND sp.price <= {params['max_price']}"
+            query += f" AND l.price <= {params['max_price']}"
 
         # Order by changes_percentage for consistent results
-        query += " ORDER BY sp.changes_percentage DESC"
+        query += " ORDER BY l.changes_percentage DESC"
 
         return query
