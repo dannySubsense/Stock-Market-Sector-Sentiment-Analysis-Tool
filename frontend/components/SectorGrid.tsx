@@ -262,6 +262,20 @@ const SectorGrid: React.FC<SectorGridProps> = ({
   const [isRefreshing, setIsRefreshing] = useState(false); // user-initiated refresh state
   const [lastUpdated, setLastUpdated] = useState<string | null>(null);
   const [calcMode, setCalcMode] = useState<'simple' | 'weighted'>('simple');
+  const [lastBatchTs, setLastBatchTs] = useState<string | null>(null);
+  const [refreshMsg, setRefreshMsg] = useState<string | null>(null);
+
+  // Small helper to fetch with timeout
+  const fetchWithTimeout = async (url: string, options: RequestInit = {}, timeoutMs = 10000): Promise<Response> => {
+    const controller = new AbortController();
+    const id = setTimeout(() => controller.abort(), timeoutMs);
+    try {
+      const resp = await fetch(url, { ...options, signal: controller.signal });
+      return resp;
+    } finally {
+      clearTimeout(id);
+    }
+  };
 
   // Fetch sector data from API
   const fetchSectorData = async (fromRefresh: boolean = false) => {
@@ -271,12 +285,9 @@ const SectorGrid: React.FC<SectorGridProps> = ({
       setIsLoading(true);
     }
     try {
-      const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 10000);
       const baseUrl = 'http://localhost:8000/api/sectors/1day/';
       const url = calcMode === 'weighted' ? `${baseUrl}?calc=weighted` : baseUrl;
-      const response = await fetch(url, { cache: 'no-store', signal: controller.signal });
-      clearTimeout(timeoutId);
+      const response = await fetchWithTimeout(url, { cache: 'no-store' }, 10000);
       if (response.ok) {
         const data = await response.json();
 
@@ -331,7 +342,12 @@ const SectorGrid: React.FC<SectorGridProps> = ({
 
         setDisplaySectors([...normalized, defaultThemeCard]);
         const metaTs = data?.metadata?.timestamp as string | undefined;
-        setLastUpdated(metaTs ?? new Date().toISOString());
+        const ts = metaTs ?? new Date().toISOString();
+        setLastUpdated(ts);
+        // Only update lastBatchTs when reading from persisted simple endpoint
+        if (calcMode === 'simple') {
+          setLastBatchTs(ts);
+        }
       } else {
         console.error('Failed to fetch sector data');
         setDisplaySectors([...defaultSectors, defaultThemeCard]);
@@ -354,10 +370,77 @@ const SectorGrid: React.FC<SectorGridProps> = ({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [calcMode]);
 
-  // Handle refresh button click
-  const handleRefresh = () => {
-    if (!isRefreshing) {
-      fetchSectorData(true);
+  // Poll for a new persisted batch (checks simple endpoint regardless of toggle)
+  const pollUntilNewBatch = async (prevTs: string | null, maxTries = 45, intervalMs = 2000): Promise<boolean> => {
+    const baseUrl = 'http://localhost:8000/api/sectors/1day/';
+    for (let i = 0; i < maxTries; i++) {
+      try {
+        const resp = await fetchWithTimeout(baseUrl, { cache: 'no-store' }, 10000);
+        if (resp.ok) {
+          const data = await resp.json();
+          const metaTs = (data?.metadata?.timestamp as string | undefined) || null;
+          if (metaTs && metaTs !== prevTs) {
+            setLastBatchTs(metaTs);
+            return true;
+          }
+        }
+      } catch {
+        // ignore transient errors during polling
+      }
+      await new Promise((r) => setTimeout(r, intervalMs));
+    }
+    return false;
+  };
+
+  // Handle refresh button click: POST recompute then poll until a new batch is persisted
+  const handleRefresh = async () => {
+    if (isRefreshing) return;
+    setIsRefreshing(true);
+    setRefreshMsg('Scheduling recompute...');
+
+    const recomputeUrl = 'http://localhost:8000/api/sectors/1day/recompute';
+    const headers: HeadersInit = { 'Content-Type': 'application/json', accept: 'application/json' };
+    const adminToken = process.env.NEXT_PUBLIC_ADMIN_RECOMPUTE_TOKEN;
+    if (adminToken) headers['X-Admin-Token'] = adminToken as string;
+
+    const prevTs = lastBatchTs;
+
+    try {
+      const resp = await fetchWithTimeout(recomputeUrl, { method: 'POST', headers }, 10000);
+      if (resp.status === 202) {
+        setRefreshMsg('Recompute accepted. Waiting for new batch...');
+      } else if (resp.status === 409) {
+        setRefreshMsg('Recompute already in progress. Waiting...');
+      } else if (resp.status === 429) {
+        setRefreshMsg('Cooldown active. Waiting for next eligible batch...');
+      } else if (resp.status === 403) {
+        setRefreshMsg('Recompute disabled by server settings.');
+        await fetchSectorData(true);
+        return;
+      } else if (resp.status === 401) {
+        setRefreshMsg('Unauthorized. Missing or invalid admin token.');
+        await fetchSectorData(true);
+        return;
+      } else {
+        setRefreshMsg(`Unexpected status ${resp.status}. Polling for updates...`);
+      }
+
+      // Poll the simple endpoint for a new persisted timestamp
+      const gotNew = await pollUntilNewBatch(prevTs);
+      if (gotNew) {
+        setRefreshMsg(null);
+        // After new batch, fetch according to current toggle (simple or weighted)
+        await fetchSectorData(true);
+      } else {
+        setRefreshMsg('Timed out waiting for recompute. Showing latest available.');
+        await fetchSectorData(true);
+      }
+    } catch (err) {
+      console.error('Error scheduling recompute:', err);
+      setRefreshMsg('Error scheduling recompute. Refreshing view only.');
+      await fetchSectorData(true);
+    } finally {
+      setIsRefreshing(false);
     }
   };
 
@@ -417,8 +500,11 @@ const SectorGrid: React.FC<SectorGridProps> = ({
             </button>
           </div>
 
-          <div className="text-sm text-gray-500">
-            Last updated: {formatLastUpdated(lastUpdated)}
+          <div className="text-sm text-gray-500 text-right">
+            <div>Last updated: {formatLastUpdated(lastUpdated)}</div>
+            {refreshMsg && (
+              <div className="text-[11px] text-gray-500">{refreshMsg}</div>
+            )}
           </div>
           <button
             onClick={handleRefresh}
