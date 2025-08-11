@@ -76,7 +76,7 @@ These rules ensure maintainability, safety, and developer velocity for the Marke
 
 ### 4 — Database & External Services
 
-- **D-1 (MUST)** Use proper async/await patterns for Polygon.io API calls and market data processing.
+- **D-1 (MUST)** Use proper async/await patterns for FMP and Polygon.io API calls and market data processing.
 - **D-2 (SHOULD)** Implement proper rate limiting and retry logic for external financial API calls.
 - **D-3 (MUST)** Use PostgreSQL + TimescaleDB client properly for time-series financial data storage.
 - **D-4 (MUST)** Use Redis caching for sector sentiment data consistently.

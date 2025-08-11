@@ -58,8 +58,9 @@ class FMPBatchDataService:
             symbols = [stock["symbol"] for stock in screener_result["stocks"]]
             logger.info(f"FMP screener returned {len(symbols)} symbols")
 
-            # Step 2: Get price data using batch quotes
-            batch_size = 100  # Optimal batch size for FMP Ultimate
+            # Step 2: Get batch price data for universe symbols  
+            # Use FMP batch quotes with optimal batch size
+            batch_size = 1000  # FMP Ultimate can handle 1000 stocks per batch
             raw_quotes = await self.fmp_client.get_batch_quotes(symbols, batch_size)
 
             if not raw_quotes:
@@ -167,7 +168,7 @@ class FMPBatchDataService:
             start_time = datetime.now()
 
             # Use FMP batch quotes with optimal batch size
-            batch_size = 100  # Tested optimal size for FMP Ultimate
+            batch_size = 1000  # FMP Ultimate can handle 1000 stocks per batch
             raw_quotes = await self.fmp_client.get_batch_quotes(symbols, batch_size)
 
             if not raw_quotes:
@@ -240,6 +241,7 @@ class FMPBatchDataService:
                     current_volume=current_volume,
                     avg_20_day_volume=avg_volume,  # FMP avgVolume is typically 20-day
                     sector="",  # Will be populated from universe data later
+                    fmp_changes_percentage=float(quote.get("changesPercentage", 0)),
                 )
 
                 stock_data_list.append(stock_data)

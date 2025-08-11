@@ -1,6 +1,6 @@
 /**
  * Sector Grid Component - Slice 1A Implementation
- * Color-coded 8-sector dashboard grid with multi-timeframe analysis
+ * Color-coded 12-slot dashboard grid (11 sectors + 1 theme placeholder)
  * Displays sentiment, top stocks, and trading signals
  */
 'use client';
@@ -24,7 +24,8 @@ interface TopStock {
 
 interface SectorData {
   sector: string;
-  sentiment_score: number;
+  sentiment_score: number; // normalized [-1,1] for UI
+  sentiment_normalized?: number;
   color_classification: 'dark_red' | 'light_red' | 'blue_neutral' | 'light_green' | 'dark_green';
   trading_signal: string;
   confidence_level: number;
@@ -43,6 +44,8 @@ interface SectorGridProps {
   isLoading?: boolean;
   lastUpdated?: string;
 }
+
+type CalcMode = 'simple' | 'weighted';
 
 // Color mappings for sectors
 const sectorColorClasses = {
@@ -63,116 +66,50 @@ const tradingSignalDisplay = {
 };
 
 // Sector display names
-const sectorDisplayNames = {
-  'technology': 'Technology',
-  'healthcare': 'Healthcare',
+const sectorDisplayNames: Record<string, string> = {
+  'basic_materials': 'Basic Materials',
+  'communication_services': 'Communication Services',
+  'consumer_cyclical': 'Consumer Cyclical',
+  'consumer_defensive': 'Consumer Defensive',
   'energy': 'Energy',
-  'financial': 'Financial',
-  'consumer_discretionary': 'Consumer',
+  'financial_services': 'Financial Services',
+  'healthcare': 'Healthcare',
   'industrials': 'Industrials',
-  'materials': 'Materials',
-  'utilities': 'Utilities'
+  'real_estate': 'Real Estate',
+  'technology': 'Technology',
+  'utilities': 'Utilities',
+  'theme_slot': 'Theme'
 };
 
-// Default sectors for loading state
+// Default sectors (11) + theme placeholder
+const makeDefaultSector = (sector: string): SectorData => ({
+  sector,
+  sentiment_score: 0.0,
+  color_classification: 'blue_neutral',
+  confidence_level: 0.0,
+  stock_count: 0,
+  trading_signal: 'NEUTRAL_CAUTIOUS',
+  timeframe_scores: { '30min': 0, '1day': 0, '3day': 0, '1week': 0 },
+  last_updated: new Date().toISOString(),
+  top_bullish: [],
+  top_bearish: []
+});
+
 const defaultSectors: SectorData[] = [
-  {
-    sector: 'technology',
-    sentiment_score: 0.0,
-    color_classification: 'blue_neutral',
-    confidence_level: 0.0,
-    stock_count: 0,
-    trading_signal: 'NEUTRAL_CAUTIOUS',
-    timeframe_scores: { '30min': 0, '1day': 0, '3day': 0, '1week': 0 },
-    last_updated: new Date().toISOString(),
-    top_bullish: [],
-    top_bearish: []
-  },
-  {
-    sector: 'healthcare',
-    sentiment_score: 0.0,
-    color_classification: 'blue_neutral',
-    confidence_level: 0.0,
-    stock_count: 0,
-    trading_signal: 'NEUTRAL_CAUTIOUS',
-    timeframe_scores: { '30min': 0, '1day': 0, '3day': 0, '1week': 0 },
-    last_updated: new Date().toISOString(),
-    top_bullish: [],
-    top_bearish: []
-  },
-  {
-    sector: 'energy',
-    sentiment_score: 0.0,
-    color_classification: 'blue_neutral',
-    confidence_level: 0.0,
-    stock_count: 0,
-    trading_signal: 'NEUTRAL_CAUTIOUS',
-    timeframe_scores: { '30min': 0, '1day': 0, '3day': 0, '1week': 0 },
-    last_updated: new Date().toISOString(),
-    top_bullish: [],
-    top_bearish: []
-  },
-  {
-    sector: 'financial',
-    sentiment_score: 0.0,
-    color_classification: 'blue_neutral',
-    confidence_level: 0.0,
-    stock_count: 0,
-    trading_signal: 'NEUTRAL_CAUTIOUS',
-    timeframe_scores: { '30min': 0, '1day': 0, '3day': 0, '1week': 0 },
-    last_updated: new Date().toISOString(),
-    top_bullish: [],
-    top_bearish: []
-  },
-  {
-    sector: 'consumer_discretionary',
-    sentiment_score: 0.0,
-    color_classification: 'blue_neutral',
-    confidence_level: 0.0,
-    stock_count: 0,
-    trading_signal: 'NEUTRAL_CAUTIOUS',
-    timeframe_scores: { '30min': 0, '1day': 0, '3day': 0, '1week': 0 },
-    last_updated: new Date().toISOString(),
-    top_bullish: [],
-    top_bearish: []
-  },
-  {
-    sector: 'industrials',
-    sentiment_score: 0.0,
-    color_classification: 'blue_neutral',
-    confidence_level: 0.0,
-    stock_count: 0,
-    trading_signal: 'NEUTRAL_CAUTIOUS',
-    timeframe_scores: { '30min': 0, '1day': 0, '3day': 0, '1week': 0 },
-    last_updated: new Date().toISOString(),
-    top_bullish: [],
-    top_bearish: []
-  },
-  {
-    sector: 'materials',
-    sentiment_score: 0.0,
-    color_classification: 'blue_neutral',
-    confidence_level: 0.0,
-    stock_count: 0,
-    trading_signal: 'NEUTRAL_CAUTIOUS',
-    timeframe_scores: { '30min': 0, '1day': 0, '3day': 0, '1week': 0 },
-    last_updated: new Date().toISOString(),
-    top_bullish: [],
-    top_bearish: []
-  },
-  {
-    sector: 'utilities',
-    sentiment_score: 0.0,
-    color_classification: 'blue_neutral',
-    confidence_level: 0.0,
-    stock_count: 0,
-    trading_signal: 'NEUTRAL_CAUTIOUS',
-    timeframe_scores: { '30min': 0, '1day': 0, '3day': 0, '1week': 0 },
-    last_updated: new Date().toISOString(),
-    top_bullish: [],
-    top_bearish: []
-  }
-];
+  'basic_materials',
+  'communication_services',
+  'consumer_cyclical',
+  'consumer_defensive',
+  'energy',
+  'financial_services',
+  'healthcare',
+  'industrials',
+  'real_estate',
+  'technology',
+  'utilities'
+].map(makeDefaultSector);
+
+const defaultThemeCard: SectorData = makeDefaultSector('theme_slot');
 
 const SectorCard: React.FC<{
   sector: SectorData;
@@ -183,12 +120,15 @@ const SectorCard: React.FC<{
   const tradingSignal = tradingSignalDisplay[sector.trading_signal as keyof typeof tradingSignalDisplay];
   const sectorName = sectorDisplayNames[sector.sector as keyof typeof sectorDisplayNames] || sector.sector;
 
-  // Get timeframe color indicators
-  const getTimeframeColor = (score: number) => {
-    if (score > 0.3) return '🟢';
-    if (score > 0) return '🟡';
-    if (score > -0.3) return '🔵';
-    return '🔴';
+  // Get timeframe color class for Tailwind dot (normalized [-1,1])
+  // Tighter small-cap 1D color bands (normalized):
+  // red ≤ -0.01, light_red -0.01..-0.003, neutral -0.003..0.003, light_green 0.003..0.01, green ≥ 0.01
+  const getTimeframeClass = (score: number) => {
+    if (score >= 0.01) return 'bg-green-500';
+    if (score >= 0.003) return 'bg-yellow-400';
+    if (score > -0.003) return 'bg-blue-500';
+    if (score > -0.01) return 'bg-orange-400';
+    return 'bg-red-500';
   };
 
   // Format percentage
@@ -230,28 +170,32 @@ const SectorCard: React.FC<{
 
       {/* Multi-timeframe indicators */}
       <div className="grid grid-cols-2 gap-2 mb-3 text-xs">
-        <div className="flex justify-between">
+        <div className="flex justify-between items-center">
           <span>30M:</span>
-          <span className="font-mono">
-            {getTimeframeColor(sector.timeframe_scores['30min'])} {formatPercent(sector.timeframe_scores['30min'])}
+          <span className="font-mono flex items-center">
+            <span className={`inline-block w-2.5 h-2.5 rounded-full mr-1 ${getTimeframeClass(sector.timeframe_scores['30min'])}`} />
+            {formatPercent(sector.timeframe_scores['30min'])}
           </span>
         </div>
-        <div className="flex justify-between">
+        <div className="flex justify-between items-center">
           <span>1D:</span>
-          <span className="font-mono">
-            {getTimeframeColor(sector.timeframe_scores['1day'])} {formatPercent(sector.timeframe_scores['1day'])}
+          <span className="font-mono flex items-center">
+            <span className={`inline-block w-2.5 h-2.5 rounded-full mr-1 ${getTimeframeClass(sector.timeframe_scores['1day'])}`} />
+            {formatPercent(sector.timeframe_scores['1day'])}
           </span>
         </div>
-        <div className="flex justify-between">
+        <div className="flex justify-between items-center">
           <span>3D:</span>
-          <span className="font-mono">
-            {getTimeframeColor(sector.timeframe_scores['3day'])} {formatPercent(sector.timeframe_scores['3day'])}
+          <span className="font-mono flex items-center">
+            <span className={`inline-block w-2.5 h-2.5 rounded-full mr-1 ${getTimeframeClass(sector.timeframe_scores['3day'])}`} />
+            {formatPercent(sector.timeframe_scores['3day'])}
           </span>
         </div>
-        <div className="flex justify-between">
+        <div className="flex justify-between items-center">
           <span>1W:</span>
-          <span className="font-mono">
-            {getTimeframeColor(sector.timeframe_scores['1week'])} {formatPercent(sector.timeframe_scores['1week'])}
+          <span className="font-mono flex items-center">
+            <span className={`inline-block w-2.5 h-2.5 rounded-full mr-1 ${getTimeframeClass(sector.timeframe_scores['1week'])}`} />
+            {formatPercent(sector.timeframe_scores['1week'])}
           </span>
         </div>
       </div>
@@ -316,34 +260,67 @@ const SectorCard: React.FC<{
 const SectorGrid: React.FC<SectorGridProps> = ({
   onSectorClick = () => {},
 }) => {
-  const [displaySectors, setDisplaySectors] = useState<SectorData[]>(defaultSectors);
+  const [displaySectors, setDisplaySectors] = useState<SectorData[]>([...defaultSectors, defaultThemeCard]);
   const [isLoading, setIsLoading] = useState(false);
   const [lastUpdated, setLastUpdated] = useState<string | null>(null);
+  const [calcMode, setCalcMode] = useState<CalcMode>('simple');
+  const [lastBatchTimestamp, setLastBatchTimestamp] = useState<string | null>(null);
 
   // Fetch sector data from API
   const fetchSectorData = async () => {
     setIsLoading(true);
     try {
-      const response = await fetch('http://localhost:8000/api/sectors');
+      const baseUrl = 'http://localhost:8000/api/sectors/1day/';
+      const url = calcMode === 'weighted' ? `${baseUrl}?calc=weighted` : baseUrl;
+      const response = await fetch(url);
       if (response.ok) {
         const data = await response.json();
-        
-        // Backend returns sectors as an object, convert to array
-        if (data.sectors && typeof data.sectors === 'object') {
-          const sectorsArray = Object.values(data.sectors) as SectorData[];
-          setDisplaySectors(sectorsArray);
-        } else {
-          setDisplaySectors(defaultSectors);
-        }
-        
+        const raw = data.sectors;
+        const arr: any[] = Array.isArray(raw) ? raw : (raw && typeof raw === 'object' ? Object.values(raw) : []);
+        const allowed = new Set([
+          'basic_materials',
+          'communication_services',
+          'consumer_cyclical',
+          'consumer_defensive',
+          'energy',
+          'financial_services',
+          'healthcare',
+          'industrials',
+          'real_estate',
+          'technology',
+          'utilities',
+        ]);
+        const filtered = arr.filter((s: any) => allowed.has(String(s?.sector ?? '').toLowerCase()));
+        const normalized: SectorData[] = filtered.map((s: any) => {
+          const norm = typeof s.sentiment_normalized === 'number'
+            ? s.sentiment_normalized
+            : (typeof s.sentiment_score === 'number' ? s.sentiment_score / 100.0 : 0);
+          return {
+            sector: s.sector,
+            sentiment_score: norm,
+            sentiment_normalized: norm,
+            color_classification: (s.color_classification ?? 'blue_neutral'),
+            trading_signal: s.trading_signal ?? 'NEUTRAL_CAUTIOUS',
+            confidence_level: 0.0,
+            // Populate 1D row with the current normalized score; other timeframes pending
+            timeframe_scores: { '30min': 0, '1day': norm, '3day': 0, '1week': 0 },
+            stock_count: s.stock_count ?? 0,
+            last_updated: s.timestamp ?? new Date().toISOString(),
+            top_bullish: [],
+            top_bearish: []
+          } as SectorData;
+        });
+        setDisplaySectors([...normalized, defaultThemeCard]);
         setLastUpdated(new Date().toISOString());
+        const metaTs = data?.metadata?.timestamp as string | undefined;
+        if (metaTs) setLastBatchTimestamp(metaTs);
       } else {
         console.error('Failed to fetch sector data');
-        setDisplaySectors(defaultSectors);
+        setDisplaySectors([...defaultSectors, defaultThemeCard]);
       }
     } catch (error) {
       console.error('Error fetching sector data:', error);
-      setDisplaySectors(defaultSectors);
+      setDisplaySectors([...defaultSectors, defaultThemeCard]);
     } finally {
       setIsLoading(false);
     }
@@ -352,11 +329,85 @@ const SectorGrid: React.FC<SectorGridProps> = ({
   // Load data on component mount
   useEffect(() => {
     fetchSectorData();
-  }, []);
+  }, [calcMode]);
 
   // Handle refresh button click
-  const handleRefresh = () => {
-    fetchSectorData();
+  const postRecompute = async (): Promise<boolean> => {
+    try {
+      const token = typeof window !== 'undefined' ? window.localStorage.getItem('adminToken') : null;
+      const resp = await fetch('http://localhost:8000/api/sectors/1day/recompute', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          ...(token ? { 'X-Admin-Token': token } : {})
+        }
+      });
+      if (resp.status === 202 || resp.ok) return true;
+      console.warn('Recompute request rejected', await resp.text());
+      return false;
+    } catch (e) {
+      console.error('Recompute request failed', e);
+      return false;
+    }
+  };
+
+  const pollUntilNewBatch = async (prevTs: string | null, timeoutMs = 60000, intervalMs = 2000) => {
+    const start = Date.now();
+    while (Date.now() - start < timeoutMs) {
+      try {
+        const resp = await fetch('http://localhost:8000/api/sectors/1day/');
+        if (resp.ok) {
+          const data = await resp.json();
+          const metaTs = data?.metadata?.timestamp as string | undefined;
+          if (metaTs && metaTs !== prevTs) {
+            // Update UI with fresh data
+            const raw = data.sectors;
+            const arr: any[] = Array.isArray(raw) ? raw : (raw && typeof raw === 'object' ? Object.values(raw) : []);
+            const allowed = new Set([
+              'basic_materials','communication_services','consumer_cyclical','consumer_defensive','energy','financial_services','healthcare','industrials','real_estate','technology','utilities',
+            ]);
+            const filtered = arr.filter((s: any) => allowed.has(String(s?.sector ?? '').toLowerCase()));
+            const normalized: SectorData[] = filtered.map((s: any) => {
+              const norm = typeof s.sentiment_normalized === 'number' ? s.sentiment_normalized : (typeof s.sentiment_score === 'number' ? s.sentiment_score / 100.0 : 0);
+              return {
+                sector: s.sector,
+                sentiment_score: norm,
+                sentiment_normalized: norm,
+                color_classification: (s.color_classification ?? 'blue_neutral'),
+                trading_signal: s.trading_signal ?? 'NEUTRAL_CAUTIOUS',
+                confidence_level: 0.0,
+                timeframe_scores: { '30min': 0, '1day': norm, '3day': 0, '1week': 0 },
+                stock_count: s.stock_count ?? 0,
+                last_updated: s.timestamp ?? new Date().toISOString(),
+                top_bullish: [],
+                top_bearish: []
+              } as SectorData;
+            });
+            setDisplaySectors([...normalized, defaultThemeCard]);
+            setLastUpdated(new Date().toISOString());
+            setLastBatchTimestamp(metaTs);
+            return true;
+          }
+        }
+      } catch (e) {
+        // ignore and continue polling
+      }
+      await new Promise(r => setTimeout(r, intervalMs));
+    }
+    return false;
+  };
+
+  const handleRefresh = async () => {
+    setIsLoading(true);
+    const prevTs = lastBatchTimestamp;
+    const accepted = await postRecompute();
+    if (accepted) {
+      await pollUntilNewBatch(prevTs);
+    } else {
+      // Fallback: just refetch current data
+      await fetchSectorData();
+    }
+    setIsLoading(false);
   };
 
   const formatLastUpdated = (timestamp?: string | null) => {
@@ -390,6 +441,18 @@ const SectorGrid: React.FC<SectorGridProps> = ({
         </div>
         
         <div className="flex items-center space-x-4">
+          {/* Calc toggle */}
+          <div className="flex items-center space-x-2 text-sm">
+            <label className="text-gray-600">Calc:</label>
+            <select
+              value={calcMode}
+              onChange={(e) => setCalcMode(e.target.value as CalcMode)}
+              className="bg-white border border-gray-300 text-gray-700 rounded px-2 py-1"
+            >
+              <option value="simple">Simple (Persisted)</option>
+              <option value="weighted">Weighted (Preview)</option>
+            </select>
+          </div>
           <div className="text-sm text-gray-500">
             Last updated: {formatLastUpdated(lastUpdated)}
           </div>
@@ -427,7 +490,7 @@ const SectorGrid: React.FC<SectorGridProps> = ({
       <div className="text-center text-sm text-gray-500">
         <p>
           Monitoring {displaySectors.reduce((total, sector) => total + sector.stock_count, 0)} small-cap stocks 
-          across 8 sectors for gap opportunities and sentiment analysis.
+          across 11 sectors (plus 1 theme) for gap opportunities and sentiment analysis.
         </p>
       </div>
     </div>

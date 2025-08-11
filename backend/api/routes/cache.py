@@ -8,8 +8,49 @@ from typing import List, Dict, Any, Optional
 from datetime import datetime
 import logging
 
-from services.cache_service import get_cache_service
-from services.performance_monitor import get_performance_monitor
+import os
+
+ANALYSIS_ENABLED: bool = os.getenv("ANALYSIS_ENABLED", "0") == "1"
+
+async def get_cache_service():
+    if not ANALYSIS_ENABLED:
+        class _DisabledCache:
+            async def get_statistics(self):
+                return {}
+            async def clear_all(self):
+                return None
+            async def get_health(self):
+                return {"status": "disabled"}
+            async def warm_all_caches(self):
+                return None
+            async def warm_sector_cache(self):
+                return None
+            async def warm_stock_cache(self):
+                return None
+            async def warm_theme_cache(self):
+                return None
+            async def list_keys(self, prefix=None):
+                return []
+            async def clear_key(self, key: str):
+                return None
+            async def optimize(self):
+                return {"improvements": []}
+        return _DisabledCache()
+    from services.cache_service import get_cache_service as _get
+    return await _get()
+
+async def get_performance_monitor():
+    if not ANALYSIS_ENABLED:
+        class _DisabledPerf:
+            async def get_cache_performance(self):
+                return {}
+            async def get_detailed_cache_performance(self):
+                return {"recommendations": [], "optimization_opportunities": []}
+            async def get_cache_access_patterns(self):
+                return {}
+        return _DisabledPerf()
+    from services.performance_monitor import get_performance_monitor as _get
+    return await _get()
 
 router = APIRouter()
 logger = logging.getLogger(__name__)

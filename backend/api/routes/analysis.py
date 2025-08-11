@@ -1,6 +1,10 @@
 """
 Analysis API endpoints for Slice 1B intelligence features
 Handles theme detection, temperature monitoring, and sympathy networks
+
+Feature flag stub: When ANALYSIS_ENABLED is false, endpoints short-circuit with
+lightweight 200 responses to preserve API contract while avoiding imports of
+legacy services during 1D baseline hardening.
 """
 
 from fastapi import APIRouter, HTTPException, Depends, BackgroundTasks
@@ -10,10 +14,65 @@ from datetime import datetime
 import logging
 
 from core.database import get_db
-from services.analysis_scheduler import get_analysis_scheduler
-from services.theme_detection import get_theme_detector
-from services.temperature_monitor import get_temperature_monitor
-from services.sympathy_network import get_sympathy_network
+from services.sma_1d_pipeline import get_sma_pipeline_1d
+import os
+
+# =====================================================
+# Feature flag for analysis endpoints
+# =====================================================
+ANALYSIS_ENABLED: bool = os.getenv("ANALYSIS_ENABLED", "0") == "1"
+
+
+# Lazy wrappers to avoid importing legacy-heavy services unless enabled
+def get_analysis_scheduler():  # type: ignore[override]
+    if not ANALYSIS_ENABLED:
+        class _DisabledScheduler:
+            def get_analysis_status(self) -> Dict[str, Any]:
+                return {"status": "disabled"}
+
+            def get_status(self) -> Dict[str, Any]:
+                return {"status": "disabled"}
+
+        return _DisabledScheduler()
+
+    from services.analysis_scheduler import get_analysis_scheduler as _get  # local import
+    return _get()
+
+
+def get_theme_detector():  # type: ignore[override]
+    if not ANALYSIS_ENABLED:
+        class _DisabledThemeDetector:
+            def get_status(self) -> Dict[str, Any]:
+                return {"status": "disabled", "active_themes": []}
+
+        return _DisabledThemeDetector()
+
+    from services.theme_detection import get_theme_detector as _get  # local import
+    return _get()
+
+
+def get_temperature_monitor():  # type: ignore[override]
+    if not ANALYSIS_ENABLED:
+        class _DisabledTempMonitor:
+            def get_status(self) -> Dict[str, Any]:
+                return {"status": "disabled"}
+
+        return _DisabledTempMonitor()
+
+    from services.temperature_monitor import get_temperature_monitor as _get  # local import
+    return _get()
+
+
+def get_sympathy_network():  # type: ignore[override]
+    if not ANALYSIS_ENABLED:
+        class _DisabledSympathy:
+            def get_status(self) -> Dict[str, Any]:
+                return {"status": "disabled"}
+
+        return _DisabledSympathy()
+
+    from services.sympathy_network import get_sympathy_network as _get  # local import
+    return _get()
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
@@ -34,6 +93,16 @@ async def trigger_on_demand_analysis(
     Enhanced for Slice 1B with theme detection integration
     """
     try:
+        if not ANALYSIS_ENABLED:
+            # Stubbed response to preserve API contract while disabled
+            return {
+                "status": "disabled",
+                "analysis_type": analysis_type,
+                "estimated_completion_time": None,
+                "message": "Analysis endpoints are disabled",
+                "includes_themes": False,
+                "timestamp": datetime.utcnow().isoformat(),
+            }
         # Validate analysis type
         if analysis_type not in ["full", "quick"]:
             raise HTTPException(
@@ -99,6 +168,15 @@ async def trigger_analysis(
     Enhanced for Slice 1B with theme detection integration
     """
     try:
+        if not ANALYSIS_ENABLED:
+            return {
+                "message": "Analysis is disabled",
+                "analysis_type": analysis_type,
+                "status": "disabled",
+                "estimated_completion": None,
+                "includes_themes": False,
+                "timestamp": datetime.utcnow().isoformat(),
+            }
         analysis_scheduler = get_analysis_scheduler()
 
         # Start analysis in background
@@ -131,6 +209,19 @@ async def get_analysis_status():
     Enhanced with Slice 1B theme detection status
     """
     try:
+        if not ANALYSIS_ENABLED:
+            # Return minimal status structure without hitting services
+            status = {"status": "disabled", "last_completion": None, "next_scheduled": None}
+            theme_status = {"status": "disabled", "active_themes": []}
+            return {
+                "analysis_status": status,
+                "theme_detection_status": theme_status,
+                "last_completion": status.get("last_completion"),
+                "next_scheduled": status.get("next_scheduled"),
+                "active_themes": theme_status.get("active_themes", []),
+                "timestamp": datetime.utcnow().isoformat(),
+            }
+
         analysis_scheduler = get_analysis_scheduler()
         status = analysis_scheduler.get_status()
 
@@ -161,15 +252,14 @@ async def refresh_sector_analysis(db: Session = Depends(get_db)):
     Enhanced with theme contamination detection
     """
     try:
-        analysis_scheduler = get_analysis_scheduler()
-
-        # Trigger sector refresh with theme integration
-        analysis_scheduler.refresh_sectors(include_themes=True)
+        # Run validated 1D SMA pipeline refresh explicitly
+        sma = get_sma_pipeline_1d()
+        result = await sma.run()
 
         return {
-            "message": "Sector analysis refresh completed",
-            "status": "completed",
-            "includes_theme_contamination": True,  # Slice 1B
+            "message": "1D SMA sector analysis refresh completed",
+            "status": result.get("status", "completed"),
+            "batch_id": result.get("batch_id"),
             "timestamp": datetime.utcnow().isoformat(),
         }
 
@@ -194,6 +284,15 @@ async def trigger_theme_detection(
     Identifies cross-sector narratives and contamination
     """
     try:
+        if not ANALYSIS_ENABLED:
+            return {
+                "message": "Theme detection is disabled",
+                "scan_type": scan_type,
+                "status": "disabled",
+                "estimated_completion": None,
+                "timestamp": datetime.utcnow().isoformat(),
+            }
+
         theme_detector = get_theme_detector()
 
         # Start theme detection in background

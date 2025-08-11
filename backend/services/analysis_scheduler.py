@@ -52,6 +52,7 @@ class AnalysisScheduler:
     def __init__(self):
         self.settings = get_settings()
         self.universe_builder = get_universe_builder()
+        # Use production 1D SMA path via SectorCalculator/SectorDataService
         self.sector_calculator = get_sector_calculator()
         self.stock_ranker = get_stock_ranker()
         self.cache_service = get_cache_service()
@@ -192,32 +193,21 @@ class AnalysisScheduler:
                 f"FMP batch workflow completed: {len(symbols)} symbols, {len(stock_data_list)} analysis records"
             )
 
-            # Update universe table with new symbols (using existing universe builder for DB update)
-            # Transform stock_data_list back to database format for universe table
-            transformed_stocks = []
-            for stock_data in stock_data_list:
-                transformed_stock = {
-                    "symbol": stock_data.symbol,
-                    "company_name": getattr(stock_data, "company_name", ""),
-                    "exchange": getattr(stock_data, "exchange", ""),
-                    "market_cap": getattr(stock_data, "market_cap", 0),
-                    "avg_daily_volume": stock_data.current_volume,
-                    "current_price": stock_data.current_price,
-                    "sector": stock_data.sector,
-                    "volatility_multiplier": getattr(
-                        stock_data, "volatility_multiplier", 1.0
-                    ),
-                }
-                transformed_stocks.append(transformed_stock)
+            # Use proven UniverseBuilder pattern instead of complex transformation
+            logger.info("Building universe using proven UniverseBuilder pattern")
+            try:
+                universe_result = await self.universe_builder.build_daily_universe()
+                if universe_result.get("status") == "success":
+                    universe_size = universe_result.get("universe_size", 0)
+                    logger.info(f"✅ Universe built and saved: {universe_size} stocks")
+                else:
+                    logger.error(f"Universe building failed: {universe_result.get('message', 'Unknown error')}")
+            except Exception as universe_error:
+                logger.error(f"Failed to update stock universe table: {universe_error}")
+                # Continue with analysis using available price data
+                logger.warning("Continuing analysis with price data only")
 
-            # Update stock_universe table
-            universe_update_result = (
-                await self.universe_builder._update_stock_universe_table(
-                    transformed_stocks
-                )
-            )
-
-            self._update_progress(40, "Universe + price data completed via FMP batch")
+            self._update_progress(40, "Universe built and price data completed")
 
             # Step 2: Calculate sector sentiment using the retrieved price data
             logger.info("Step 2/3: Calculating sector sentiment")

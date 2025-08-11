@@ -10,12 +10,11 @@ from sqlalchemy import (
     DateTime,
     BigInteger,
     Boolean,
-    Text,
     Integer,
 )
 from sqlalchemy.sql import func
 from datetime import datetime
-from typing import Optional, Dict, Any
+from typing import Dict, Any
 
 from core.database import Base
 
@@ -210,16 +209,62 @@ class StockData(Base):
 
 class StockPrice1D(Base):
     """
-    StockPrice1D table - stores 1D price/volume data for each stock (raw snapshot)
+    StockPrice1D table - stores 1D price/volume and market data for each stock (raw snapshot)
+    Matches FMP Multiple Company Prices API response
     """
 
     __tablename__ = "stock_prices_1d"
 
     symbol = Column(String(10), primary_key=True, index=True)
-    timestamp = Column(DateTime(timezone=True), primary_key=True)
-    open_price = Column(Float)
-    high_price = Column(Float)
-    low_price = Column(Float)
-    close_price = Column(Float)
+    fmp_timestamp = Column(BigInteger, primary_key=True)
+    name = Column(String(200))
+    price = Column(Float)
+    changes_percentage = Column(Float)
+    change = Column(Float)
+    day_low = Column(Float)
+    day_high = Column(Float)
+    year_high = Column(Float)
+    year_low = Column(Float)
+    market_cap = Column(BigInteger)
+    price_avg_50 = Column(Float)
+    price_avg_200 = Column(Float)
+    exchange = Column(String(20))
     volume = Column(BigInteger)
-    created_at = Column(DateTime(timezone=True), default=func.now())
+    avg_volume = Column(BigInteger)
+    open_price = Column(Float)
+    previous_close = Column(Float)
+    eps = Column(Float)
+    pe = Column(Float)
+    earnings_announcement = Column(DateTime, nullable=True)
+    shares_outstanding = Column(BigInteger)
+    recorded_at = Column(DateTime(timezone=True), default=func.now())
+
+    def __repr__(self):
+        return f"<StockPrice1D(symbol='{self.symbol}', fmp_timestamp={self.fmp_timestamp}, price={self.price})>"
+
+    def to_dict(self) -> Dict[str, Any]:
+        return {
+            "symbol": self.symbol,
+            "fmp_timestamp": self.fmp_timestamp,
+            "name": self.name,
+            "price": self.price,
+            "changes_percentage": self.changes_percentage,
+            "change": self.change,
+            "day_low": self.day_low,
+            "day_high": self.day_high,
+            "year_high": self.year_high,
+            "year_low": self.year_low,
+            "market_cap": self.market_cap,
+            "price_avg_50": self.price_avg_50,
+            "price_avg_200": self.price_avg_200,
+            "exchange": self.exchange,
+            "volume": self.volume,
+            "avg_volume": self.avg_volume,
+            "open_price": self.open_price,
+            "previous_close": self.previous_close,
+            "eps": self.eps,
+            "pe": self.pe,
+            "earnings_announcement": self.earnings_announcement.isoformat() if self.earnings_announcement else None,
+            "shares_outstanding": self.shares_outstanding,
+            "recorded_at": self.recorded_at.isoformat() if self.recorded_at else None,
+        }

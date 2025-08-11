@@ -19,9 +19,10 @@ class APIKeyConfig(BaseModel):
 
 
 class DatabaseConfig(BaseModel):
-    """Database configuration"""
+    """Database configuration (PostgreSQL only; legacy SQLite removed)."""
 
-    sqlite_path: str = "./data/sentiment.db"
+    # Accept and ignore any legacy keys (e.g., sqlite_path) from credentials.yml
+    model_config = ConfigDict(extra="ignore")
 
 
 class RedisConfig(BaseModel):
@@ -54,6 +55,14 @@ class Settings(BaseSettings):
     # Environment variables
     environment: str = "development"
     debug: bool = True
+    # Schema management
+    auto_create_schema: bool = False
+
+    # Secure recompute API (Option B)
+    enable_recompute_api: bool = True
+    admin_recompute_token: Optional[str] = None  # set via env ADMIN_RECOMPUTE_TOKEN
+    recompute_cooldown_seconds: int = 300
+    recompute_lock_key: int = 87456321
 
     # API Settings
     api_v1_prefix: str = "/api"

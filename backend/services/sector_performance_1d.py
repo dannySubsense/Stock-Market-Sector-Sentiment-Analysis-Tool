@@ -3,7 +3,7 @@
 Implements exact formulas defined in 1D_Performance_Calculation_Specification.md
 """
 
-from typing import Dict, List, Tuple, Any
+from typing import Dict, List, Tuple, Any, Optional
 from dataclasses import dataclass
 from datetime import datetime
 import logging
@@ -15,7 +15,7 @@ logger = logging.getLogger(__name__)
 
 @dataclass
 class StockData1D:
-    """Individual stock data for 1D calculation"""
+    """Individual stock data for 1D calculation - updated to use FMP pre-calculated performance"""
 
     symbol: str
     current_price: float
@@ -23,6 +23,14 @@ class StockData1D:
     current_volume: int
     avg_20_day_volume: int
     sector: str
+    # NEW: Use FMP's pre-calculated performance to eliminate manual calculations
+    fmp_changes_percentage: float  # FMP's pre-calculated daily performance
+    
+    # Additional fields for Step 6 ranking
+    market_cap: int = 0
+    float_shares: Optional[int] = None
+    open_price: Optional[float] = None
+    avg_volume: int = 0
 
 
 @dataclass
@@ -93,38 +101,22 @@ class SectorPerformanceCalculator1D:
 
     def calculate_stock_performance(self, stock_data: StockData1D) -> float:
         """
-        Calculate individual stock 1D performance
-        Formula: (current_price - previous_close) / previous_close * 100
+        Get individual stock 1D performance using FMP's pre-calculated changes_percentage
+        Eliminates manual calculation: (current_price - previous_close) / previous_close * 100
 
         Args:
-            stock_data: Stock price and volume data
+            stock_data: Stock price and volume data with FMP's changes_percentage
 
         Returns:
             Stock performance percentage (capped at ±50%)
         """
-        # Input validation
-        if stock_data.current_price <= 0:
-            raise ValueError(
-                f"Invalid current price for {stock_data.symbol}: "
-                f"{stock_data.current_price}"
-            )
-        if stock_data.previous_close <= 0:
-            raise ValueError(
-                f"Invalid previous close for {stock_data.symbol}: "
-                f"{stock_data.previous_close}"
-            )
+        # Use FMP's pre-calculated performance - eliminates calculation errors
+        fmp_performance = stock_data.fmp_changes_percentage
 
-        # Calculate raw performance
-        raw_performance = (
-            (stock_data.current_price - stock_data.previous_close)
-            / stock_data.previous_close
-            * 100
-        )
-
-        # Apply performance cap from specification
+        # Apply performance cap from specification (keep existing safety checks)
         capped_performance = max(
             -self.MAX_PERFORMANCE_CHANGE,
-            min(self.MAX_PERFORMANCE_CHANGE, raw_performance),
+            min(self.MAX_PERFORMANCE_CHANGE, fmp_performance),
         )
 
         return round(capped_performance, 3)  # 3 decimal places per spec

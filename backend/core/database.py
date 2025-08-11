@@ -86,11 +86,27 @@ async def init_database():
         print("Make sure PostgreSQL is running: docker compose up -d postgres")
         raise
 
-    # Import all models to register them
-    from models import stock_universe, sector_sentiment, stock_data
+    # Conditionally create only active tables
+    if settings and getattr(settings, "auto_create_schema", False):
+        print("AUTO_CREATE_SCHEMA is enabled - creating active tables only...")
+        # Import only the active production models
+        from models.stock_universe import StockUniverse
+        from models.stock_data import StockPrice1D
+        from models.sector_sentiment_1d import SectorSentiment1D
+        from models.sector_gappers_1d import SectorGappers1D
 
-    # Create all tables (schema already created by init.sql)
-    Base.metadata.create_all(bind=engine)
+        # Create only the explicitly listed active tables
+        Base.metadata.create_all(
+            bind=engine,
+            tables=[
+                StockUniverse.__table__,
+                StockPrice1D.__table__,
+                SectorSentiment1D.__table__,
+                SectorGappers1D.__table__,
+            ],
+        )
+    else:
+        print("AUTO_CREATE_SCHEMA is disabled - skipping automatic table creation")
 
     print(f"PostgreSQL database ready at {POSTGRES_HOST}:{POSTGRES_PORT}/{POSTGRES_DB}")
 

@@ -8,6 +8,18 @@
 **Slice 1B Focus:** Theme intelligence and manipulation detection  
 **Deployment Philosophy:** Progressive enhancement with clear migration paths
 
+---
+
+## 📋 **CURRENT DATABASE DOCUMENTATION**
+
+**⚠️ AUTHORITATIVE SOURCES for Current Table Structure:**
+- **`backend/database/init.sql`** - Complete TimescaleDB schema (PRODUCTION TRUTH)
+- **`backend/models/*.py`** - Python SQLAlchemy models (WORKING IMPLEMENTATION)
+
+*Note: This document contains strategic planning. For current table structures, columns, and constraints, always reference the authoritative sources above.*
+
+---
+
 ## Executive Summary
 
 This database and deployment strategy is specifically tailored for the **two-slice implementation approach**, ensuring Slice 1A delivers immediate trading value while building the data foundation for Slice 1B's sophisticated intelligence capabilities. The strategy prioritizes **performance optimization for small-cap sector analysis** and **scalable architecture for theme detection**.
@@ -58,7 +70,7 @@ CREATE INDEX idx_sector_current ON sector_sentiment_1a (sector, timestamp DESC);
 CREATE INDEX idx_color_classification ON sector_sentiment_1a (color_code, timestamp DESC);
 ```
 
-#### Small-Cap Universe Table
+#### Small-Cap Universe Tablet 
 
 ```sql
 -- =====================================================

@@ -2,8 +2,8 @@
 
 ## Market Sector Sentiment Analysis Tool - Development Environment
 
-**Target:** Slice 1A Foundation - 8-sector sentiment dashboard  
-**Architecture:** FastAPI backend + Next.js frontend + SQLite database  
+**Target:** Slice 1A Foundation - sector sentiment dashboard  
+**Architecture:** FastAPI backend + Next.js frontend + PostgreSQL (TimescaleDB)  
 **Development Mode:** Local development with real API integration
 
 ---
@@ -28,25 +28,19 @@
 
 ```
 Stock Market Sector Sentiment Analysis Tool/
-├── src/
-│   ├── backend/                    # FastAPI backend
-│   │   ├── api/routes/            # API endpoints
-│   │   ├── core/                  # Configuration & database
-│   │   ├── models/                # SQLAlchemy models
-│   │   ├── mcp/                   # MCP client integrations
-│   │   ├── services/              # Business logic
-│   │   └── main.py               # FastAPI app entry point
-│   └── frontend/                  # Next.js frontend
-│       ├── src/app/              # App Router pages
-│       ├── src/components/       # React components
-│       └── next.config.js        # Next.js configuration
-├── data/                          # SQLite database files
-├── tests/                         # Test files
-├── credentials.yml                # Your API keys (create from template)
-├── credentials.template.yml       # Template for API keys
-├── setup.py                      # Automated setup script
-├── test_mcp_servers.py           # MCP server test script
-└── requirements.txt              # Python dependencies
+├── backend/                        # FastAPI backend
+│   ├── api/routes/                # API endpoints
+│   ├── core/                      # Configuration & database
+│   ├── models/                    # SQLAlchemy models
+│   ├── services/                  # Business logic
+│   └── main.py                    # FastAPI app entry point
+├── frontend/                       # Next.js frontend
+│   ├── app/                        # App Router pages
+│   ├── components/                 # React components
+│   └── next.config.js              # Next.js configuration
+├── credentials.yml                 # Your API keys (create from template)
+├── credentials.template.yml        # Template for API keys
+└── requirements.txt               # Python dependencies
 ```
 
 ---
@@ -62,9 +56,6 @@ python setup.py
 # 2. Fill in your API keys
 cp credentials.template.yml credentials.yml
 # Edit credentials.yml with your actual API keys
-
-# 3. Test MCP servers
-python test_mcp_servers.py
 ```
 
 ### Option 2: Manual Setup
@@ -90,10 +81,15 @@ pip install -r requirements.txt
 npm install
 ```
 
-#### Step 3: Database Setup
-```bash
-# The SQLite database will be created automatically
-# Location: ./data/sentiment.db
+#### Step 3: Database Setup (PostgreSQL)
+PostgreSQL runs via Docker (docker-compose). Default connection:
+```
+Host: 127.0.0.1
+Port: 5433
+Database: market_sentiment
+User: market_user
+Password: market_password
+URI: postgresql://market_user:market_password@127.0.0.1:5433/market_sentiment
 ```
 
 #### Step 4: Redis Setup
@@ -148,32 +144,9 @@ development:
 ---
 
 ## 🧪 Testing the Setup
+Use the API health endpoint after starting the backend.
 
-### 1. Test MCP Servers
-```bash
-# This tests both Polygon and FMP API connections
-python test_mcp_servers.py
-```
-
-Expected output:
-```
-🔵 Testing Polygon.io MCP Server
-✅ Connection successful!
-✅ Tickers endpoint working!
-✅ Market status endpoint working!
-
-🟡 Testing FMP MCP Server  
-✅ Connection successful!
-✅ Stock list endpoint working!
-✅ Company profile working!
-
-🚀 Testing Small-Cap Workflow
-✅ Small-cap workflow test completed!
-
-🎉 All tests passed! MCP servers are working correctly.
-```
-
-### 2. Test Backend
+### Test Backend
 ```bash
 # Start the backend
 cd src/backend
@@ -183,7 +156,7 @@ python main.py
 curl http://localhost:8000/health
 ```
 
-### 3. Test Frontend
+### Test Frontend
 ```bash
 # Start the frontend
 npm run dev
@@ -314,8 +287,7 @@ development:
 
 If you encounter issues:
 1. Check this setup guide
-2. Run `python test_mcp_servers.py` to verify API connections
-3. Check logs in the backend console
-4. Verify all dependencies are installed correctly
+2. Check logs in the backend console
+3. Verify all dependencies are installed correctly
 
 **Environment setup complete!** You're ready to begin Slice 1A development. 

@@ -4,21 +4,32 @@ Separate endpoints per timeframe for optimal performance and caching
 Updated to use atomic batch operations with staleness detection
 """
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, BackgroundTasks, Request, status
 from sqlalchemy.orm import Session
 from typing import List, Dict, Any
 import logging
 
 from core.database import get_db
+from core.config import get_settings
 from services.data_freshness_service import get_freshness_service, DataFreshnessService
+from services.sector_data_service import SectorDataService
+from services.sector_filters import SectorFilters
+from services.simple_sector_calculator import SectorCalculator
+from sqlalchemy import text
+from datetime import datetime, timezone
+from services.fmp_batch_data_service import FMPBatchDataService
+from services.sma_1d_pipeline import get_sma_pipeline_1d
+import asyncio
 
 router = APIRouter(prefix="/sectors", tags=["sectors"])
 logger = logging.getLogger(__name__)
+settings = get_settings()
 
 
 @router.get("/1day/", response_model=Dict[str, Any])
 async def get_all_sectors_1day(
     include_stale: bool = True,
+    calc: str | None = None,
     db: Session = Depends(get_db),
     freshness_service: DataFreshnessService = Depends(get_freshness_service),
 ):
@@ -27,6 +38,60 @@ async def get_all_sectors_1day(
     Returns all 11 sectors with unified staleness flag for UI gray card display
     """
     try:
+        # Preview recompute without persistence if calc is requested
+        if calc in {"simple", "weighted"}:
+            data_service = SectorDataService()
+            filters = SectorFilters()
+            calculator = SectorCalculator(mode=calc)
+            rows = db.execute(text("SELECT DISTINCT sector FROM stock_universe WHERE is_active = true ORDER BY sector")).fetchall()
+            sectors_dynamic = [r[0] for r in rows]
+            now_ts = datetime.now(timezone.utc)
+
+            def color_from_norm(n: float) -> str:
+                if n <= -0.01:
+                    return "dark_red"
+                if n <= -0.003:
+                    return "light_red"
+                if n < 0.003:
+                    return "blue_neutral"
+                if n < 0.01:
+                    return "light_green"
+                return "dark_green"
+
+            out: List[Dict[str, Any]] = []
+            for s in sectors_dynamic:
+                stocks = await data_service.get_filtered_sector_data(s, filters)
+                perf = calculator.calculate_sector_performance(stocks)
+                norm = round((perf or 0.0) / 100.0, 6)
+                out.append({
+                    "sector": s,
+                    "timeframe": "1d",
+                    "timestamp": now_ts.isoformat(),
+                    "batch_id": "preview",
+                    "sentiment_score": perf,
+                    "sentiment_normalized": norm,
+                    "color_classification": color_from_norm(norm),
+                    "trading_signal": ("bullish" if norm >= 0.01 else ("bearish" if norm <= -0.01 else "neutral")),
+                    "stock_count": len(stocks),
+                    "created_at": now_ts.isoformat(),
+                })
+
+            return {
+                "sectors": out,
+                "metadata": {
+                    "batch_id": "preview",
+                    "timestamp": now_ts.isoformat(),
+                    "timeframe": "1day",
+                    "is_stale": False,
+                    "staleness_threshold_hours": 1,
+                    "age_minutes": 0.0,
+                    "sector_count": len(out),
+                    "integrity_valid": True,
+                    "integrity_issues": [],
+                    "preview": True,
+                    "calc": calc,
+                },
+            }
 
         # Get latest complete batch for 1day timeframe
         batch_records, is_stale = freshness_service.get_latest_complete_batch(
@@ -81,12 +146,81 @@ async def get_all_sectors_1day(
             f"Served {len(sectors)} sectors for 1day timeframe "
             f"from batch {batch_records[0].batch_id} (stale: {is_stale})"
         )
+        # Optional: echo calc mode for UI/debug (actual calc used at write time)
+        if calc:
+            response["calc"] = calc
         return response
 
     except HTTPException:
         raise
     except Exception as e:
         logger.error(f"Error getting all sectors for 1day: {e}")
+        raise HTTPException(status_code=500, detail="Internal server error")
+
+
+# In-process guard (single-worker protection). For multi-worker, rely on cooldown + ops.
+_recompute_lock = asyncio.Lock()
+_last_recompute_started_at: datetime | None = None
+
+
+@router.post("/1day/recompute", status_code=status.HTTP_202_ACCEPTED)
+async def recompute_1day(
+    request: Request,
+    background_tasks: BackgroundTasks,  # kept for signature stability; not used
+    db: Session = Depends(get_db),
+    freshness_service: DataFreshnessService = Depends(get_freshness_service),
+):
+    """
+    Secure recompute endpoint: fetch latest FMP prices and run SMA 1D pipeline.
+    - Requires settings.enable_recompute_api = True
+    - Requires X-Admin-Token header to match settings.admin_recompute_token (if set)
+    - Enforces cooldown via DataFreshnessService and an advisory lock
+    Returns 202 Accepted when background task is scheduled; client should poll GET /sectors/1day/.
+    """
+    try:
+        if not settings.enable_recompute_api:
+            raise HTTPException(status_code=403, detail="Recompute API disabled")
+
+        # Token check
+        token = request.headers.get("X-Admin-Token")
+        if settings.admin_recompute_token and token != settings.admin_recompute_token:
+            raise HTTPException(status_code=401, detail="Unauthorized")
+
+        # Cooldown check using freshness (deny if last batch < cooldown seconds)
+        last_batch, _ = freshness_service.get_latest_complete_batch(db, timeframe="1day")
+        if last_batch:
+            last_ts = last_batch[0].timestamp
+            age = freshness_service.get_batch_age_info(last_ts)
+            # age_minutes available; compare in seconds
+            if (age.get("age_minutes", 0) or 0) * 60 < settings.recompute_cooldown_seconds:
+                raise HTTPException(status_code=429, detail="Recompute cooldown active")
+
+        # In-process lock to avoid overlapping runs (single app instance)
+        if _recompute_lock.locked():
+            raise HTTPException(status_code=409, detail="Another recompute is in progress")
+
+        # Background task to fetch prices then run SMA pipeline
+        async def _do_recompute():
+            async with _recompute_lock:
+                global _last_recompute_started_at
+                _last_recompute_started_at = datetime.now(timezone.utc)
+                fmp = FMPBatchDataService()
+                from services.universe_builder import UniverseBuilder
+                criteria = UniverseBuilder().get_fmp_screening_criteria()
+                await fmp.get_universe_with_price_data_and_storage(criteria, store_to_db=True)
+                sma = get_sma_pipeline_1d()
+                await sma.run()
+
+        # Ensure the async recompute coroutine is actually scheduled
+        # Schedule async task immediately on the running event loop
+        asyncio.create_task(_do_recompute())
+
+        return {"status": "accepted", "message": "Recompute scheduled", "timeframe": "1day"}
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error scheduling recompute: {e}")
         raise HTTPException(status_code=500, detail="Internal server error")
 
 

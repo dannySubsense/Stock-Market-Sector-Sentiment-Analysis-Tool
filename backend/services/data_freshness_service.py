@@ -10,7 +10,7 @@ from sqlalchemy.orm import Session
 from sqlalchemy import desc, and_, func
 import logging
 
-from models.sector_sentiment import SectorSentiment
+from models.sector_sentiment_1d import SectorSentiment1D
 from core.database import SessionLocal
 
 logger = logging.getLogger(__name__)
@@ -25,7 +25,7 @@ class DataFreshnessService:
 
     def get_latest_complete_batch(
         self, db: Session, timeframe: str = "1day"
-    ) -> Tuple[List[SectorSentiment], bool]:
+    ) -> Tuple[List[SectorSentiment1D], bool]:
         """
         Get the most recent complete batch of sector sentiment data
 
@@ -38,14 +38,13 @@ class DataFreshnessService:
             Returns empty list if no complete batch found
         """
         try:
-            # Get the most recent batch_id
+            # Get the most recent batch_id (1D timeframe is implicit)
             latest_batch_result = (
                 db.query(
-                    SectorSentiment.batch_id,
-                    func.max(SectorSentiment.timestamp).label("max_timestamp"),
+                    SectorSentiment1D.batch_id,
+                    func.max(SectorSentiment1D.timestamp).label("max_timestamp"),
                 )
-                .filter(SectorSentiment.timeframe == timeframe)
-                .group_by(SectorSentiment.batch_id)
+                .group_by(SectorSentiment1D.batch_id)
                 .order_by(desc("max_timestamp"))
                 .first()
             )
@@ -57,16 +56,11 @@ class DataFreshnessService:
             latest_batch_id = latest_batch_result.batch_id
             latest_timestamp = latest_batch_result.max_timestamp
 
-            # Get all records from the latest batch
+            # Get all records from the latest batch (1D timeframe is implicit)
             batch_records = (
-                db.query(SectorSentiment)
-                .filter(
-                    and_(
-                        SectorSentiment.batch_id == latest_batch_id,
-                        SectorSentiment.timeframe == timeframe,
-                    )
-                )
-                .order_by(SectorSentiment.sector)
+                db.query(SectorSentiment1D)
+                .filter(SectorSentiment1D.batch_id == latest_batch_id)
+                .order_by(SectorSentiment1D.sector)
                 .all()
             )
 
@@ -101,8 +95,12 @@ class DataFreshnessService:
         Returns:
             True if batch is older than staleness threshold
         """
+        # Normalize to UTC-aware datetimes for safe comparison
         cutoff_time = datetime.now(timezone.utc) - self.staleness_threshold
-        return batch_timestamp < cutoff_time
+        ts = batch_timestamp
+        if ts.tzinfo is None:
+            ts = ts.replace(tzinfo=timezone.utc)
+        return ts < cutoff_time
 
     def get_batch_age_info(self, batch_timestamp: datetime) -> Dict[str, Any]:
         """
@@ -115,7 +113,8 @@ class DataFreshnessService:
             Dict with age details and staleness status
         """
         try:
-            age = datetime.now(timezone.utc) - batch_timestamp
+            ts = batch_timestamp if batch_timestamp.tzinfo else batch_timestamp.replace(tzinfo=timezone.utc)
+            age = datetime.now(timezone.utc) - ts
             is_stale = self.is_batch_stale(batch_timestamp)
 
             return {
@@ -124,7 +123,7 @@ class DataFreshnessService:
                 "threshold_minutes": round(
                     self.staleness_threshold.total_seconds() / 60
                 ),
-                "timestamp": batch_timestamp.isoformat(),
+                "timestamp": ts.isoformat(),
                 "status": "stale" if is_stale else "fresh",
             }
 
@@ -147,17 +146,16 @@ class DataFreshnessService:
             List of batch summary dictionaries for specified timeframe
         """
         try:
-            # Get recent batches with their metadata for specified timeframe
+            # Get recent batches with their metadata (1D timeframe is implicit)
             batch_summaries = (
                 db.query(
-                    SectorSentiment.batch_id,
-                    func.count(SectorSentiment.sector).label("sector_count"),
-                    func.min(SectorSentiment.timestamp).label("earliest"),
-                    func.max(SectorSentiment.timestamp).label("latest"),
-                    func.avg(SectorSentiment.sentiment_score).label("avg_sentiment"),
+                    SectorSentiment1D.batch_id,
+                    func.count(SectorSentiment1D.sector).label("sector_count"),
+                    func.min(SectorSentiment1D.timestamp).label("earliest"),
+                    func.max(SectorSentiment1D.timestamp).label("latest"),
+                    func.avg(SectorSentiment1D.sentiment_score).label("avg_sentiment"),
                 )
-                .filter(SectorSentiment.timeframe == timeframe)
-                .group_by(SectorSentiment.batch_id)
+                .group_by(SectorSentiment1D.batch_id)
                 .order_by(desc("latest"))
                 .limit(limit)
                 .all()
@@ -188,7 +186,7 @@ class DataFreshnessService:
             return []
 
     def validate_batch_integrity(
-        self, batch_records: List[SectorSentiment]
+        self, batch_records: List[SectorSentiment1D]
     ) -> Dict[str, Any]:
         """
         Validate the integrity of a batch before serving to API
@@ -242,8 +240,7 @@ class DataFreshnessService:
         try:
             with SessionLocal() as db:
                 latest = (
-                    db.query(func.max(SectorSentiment.timestamp))
-                    .filter(SectorSentiment.timeframe == timeframe)
+                    db.query(func.max(SectorSentiment1D.timestamp))
                     .scalar()
                 )
                 return latest
@@ -269,9 +266,10 @@ class DataFreshnessService:
                 )
 
                 # Get batch IDs to delete
+                from models.sector_sentiment_1d import SectorSentiment1D
                 old_batch_ids = (
-                    db.query(SectorSentiment.batch_id)
-                    .filter(SectorSentiment.timestamp < cutoff_time)
+                    db.query(SectorSentiment1D.batch_id)
+                    .filter(SectorSentiment1D.timestamp < cutoff_time)
                     .distinct()
                     .all()
                 )
@@ -283,8 +281,8 @@ class DataFreshnessService:
 
                 # Delete all records from old batches
                 deleted = (
-                    db.query(SectorSentiment)
-                    .filter(SectorSentiment.batch_id.in_(old_batch_list))
+                    db.query(SectorSentiment1D)
+                    .filter(SectorSentiment1D.batch_id.in_(old_batch_list))
                     .delete(synchronize_session=False)
                 )
 
@@ -317,3 +315,4 @@ def get_freshness_service() -> DataFreshnessService:
     if _freshness_service is None:
         _freshness_service = DataFreshnessService()
     return _freshness_service
+ 

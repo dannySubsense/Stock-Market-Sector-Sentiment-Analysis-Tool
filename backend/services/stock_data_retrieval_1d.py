@@ -1,6 +1,6 @@
 """
-1D Stock Data Retrieval Service - API Comparison and Data Quality Analysis
-Tests both FMP and Polygon APIs for 1D sector performance calculation data needs
+LEGACY: 1D per-symbol data retrieval via APIs (FMP/Polygon)
+Archived from production to prevent accidental per-symbol usage in 1D pipeline.
 """
 
 import asyncio
@@ -10,8 +10,13 @@ from dataclasses import dataclass
 from datetime import datetime
 import logging
 
-from mcp.fmp_client import get_fmp_client
-from mcp.polygon_client import get_polygon_client
+# Legacy imports guarded to avoid pulling MCP dependencies in SMA 1D pipeline
+try:
+    from mcp.fmp_client import get_fmp_client  # type: ignore
+    from mcp.polygon_client import get_polygon_client  # type: ignore
+except Exception:  # pragma: no cover - legacy path not used in SMA 1D
+    get_fmp_client = lambda: None  # type: ignore
+    get_polygon_client = lambda: None  # type: ignore
 from services.sector_performance_1d import StockData1D
 
 logger = logging.getLogger(__name__)
@@ -59,6 +64,7 @@ class StockDataRetrieval1D:
     MIN_VOLUME = 0
 
     def __init__(self):
+        # Legacy clients retained only for backwards compatibility in archived module
         self.fmp_client = get_fmp_client()
         self.polygon_client = get_polygon_client()
 
@@ -640,6 +646,75 @@ class StockDataRetrieval1D:
         ]
         return {field: data.get(field) for field in preview_fields if field in data}
 
+    async def get_batch_1d_stock_data(
+        self, symbols: List[str]
+    ) -> List[StockData1D]:
+        """
+        Get 1D stock data for multiple symbols using the validated pipeline pattern:
+        - Query latest rows from stock_prices_1d for the provided symbols
+        - Join stock_universe to enforce active symbols only
+        - Convert FMP fields to StockData1D using FMP's changes_percentage
+
+        No per-symbol API calls.
+        """
+        from sqlalchemy import text as sql_text
+        from core.database import SessionLocal
+
+        if not symbols:
+            return []
+
+        # Ensure symbols are uppercased and unique
+        unique_symbols = sorted({s.upper() for s in symbols})
+
+        query = sql_text(
+            """
+            SELECT DISTINCT ON (sp.symbol)
+                sp.symbol,
+                sp.price,
+                sp.previous_close,
+                sp.volume,
+                COALESCE(sp.avg_volume, 0) AS avg_volume,
+                COALESCE(sp.changes_percentage, 0) AS changes_percentage
+            FROM stock_prices_1d sp
+            JOIN stock_universe su ON sp.symbol = su.symbol
+            WHERE sp.symbol = ANY(:symbols)
+              AND su.is_active = TRUE
+            ORDER BY sp.symbol, sp.recorded_at DESC
+            """
+        )
+
+        results: List[StockData1D] = []
+
+        try:
+            with SessionLocal() as db:
+                rows = db.execute(query, {"symbols": unique_symbols}).fetchall()
+
+            for row in rows:
+                try:
+                    results.append(
+                        StockData1D(
+                            symbol=str(row[0]).upper(),
+                            current_price=float(row[1] or 0.0),
+                            previous_close=float(row[2] or 0.0),
+                            current_volume=int(row[3] or 0),
+                            avg_20_day_volume=int(row[4] or 0),
+                            sector="",  # sector not needed for performance calc here
+                            fmp_changes_percentage=float(row[5] or 0.0),
+                        )
+                    )
+                except Exception as convert_err:
+                    logger.warning(
+                        f"Skipping symbol due to conversion error: {convert_err}"
+                    )
+
+            logger.info(
+                f"Retrieved DB batch data for {len(results)}/{len(unique_symbols)} symbols"
+            )
+            return results
+        except Exception as e:
+            logger.error(f"Batch DB retrieval failed: {e}")
+            return []
+
     async def get_1d_stock_data(
         self, symbol: str, preferred_api: str = "auto"
     ) -> Optional[StockData1D]:
@@ -701,4 +776,5 @@ class StockDataRetrieval1D:
                 quote_data.get("avgVolume", quote_data.get("volume", 0))
             ),
             sector="",  # Will be populated from universe data
+            fmp_changes_percentage=float(quote_data.get("changesPercentage", 0)),
         )

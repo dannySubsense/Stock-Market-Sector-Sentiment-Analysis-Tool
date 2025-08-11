@@ -9,7 +9,7 @@ from datetime import datetime, timezone
 from typing import Dict, Any, List, Optional, Tuple
 import logging
 
-from models.sector_sentiment import SectorSentiment
+from models.sector_sentiment_1d import SectorSentiment1D
 
 logger = logging.getLogger(__name__)
 
@@ -114,9 +114,10 @@ class SectorBatchValidator:
                 issues.append(f"{sector_name}: Missing sentiment_score")
             elif not isinstance(sentiment_score, (int, float)):
                 issues.append(f"{sector_name}: sentiment_score must be numeric")
-            elif not (-1.0 <= sentiment_score <= 1.0):
+            # Validated pipeline uses simple average of changes_percentage (percent units)
+            elif not (-100.0 <= sentiment_score <= 100.0):
                 issues.append(
-                    f"{sector_name}: sentiment_score must be between -1.0 and 1.0, "
+                    f"{sector_name}: sentiment_score must be between -100.0 and 100.0 (percent units), "
                     f"got {sentiment_score}"
                 )
 
@@ -144,7 +145,7 @@ class SectorBatchValidator:
         sector_results: Dict[str, Any],
         timeframe: str = "1day",
         analysis_metadata: Optional[Dict[str, Any]] = None,
-    ) -> List[SectorSentiment]:
+    ) -> List[SectorSentiment1D]:
         """
         Prepare validated sector batch for storage
 
@@ -187,18 +188,14 @@ class SectorBatchValidator:
             f"Creating validated batch {batch_id} with {len(sector_results)} sectors"
         )
 
-        # Create SectorSentiment records
+        # Create SectorSentiment1D records (minimal 1D schema per validated pipeline)
         batch_records = []
         for sector_name, sector_data in sector_results.items():
-            record = SectorSentiment(
+            record = SectorSentiment1D(
                 sector=sector_name,
-                timeframe=timeframe,
                 timestamp=current_time,
                 batch_id=batch_id,
                 sentiment_score=sector_data.get("sentiment_score", 0.0),
-                bullish_count=len(sector_data.get("top_bullish", [])),
-                bearish_count=len(sector_data.get("top_bearish", [])),
-                total_volume=sector_data.get("total_volume", 0),
                 created_at=current_time,
             )
             batch_records.append(record)
@@ -206,7 +203,7 @@ class SectorBatchValidator:
         logger.info(f"✅ Batch validation successful: {batch_id}")
         return batch_records
 
-    def get_batch_summary(self, batch_records: List[SectorSentiment]) -> Dict[str, Any]:
+    def get_batch_summary(self, batch_records: List[SectorSentiment1D]) -> Dict[str, Any]:
         """
         Get summary information about a validated batch
 
@@ -231,7 +228,7 @@ class SectorBatchValidator:
             "batch_id": batch_id,
             "sector_count": len(batch_records),
             "sectors": sorted(sectors),
-            "timeframe": batch_records[0].timeframe,
+            "timeframe": "1day",  # Implicit for SectorSentiment1D
             "timestamp": batch_records[0].timestamp.isoformat(),
             "avg_sentiment": (
                 sum(sentiment_scores) / len(sentiment_scores)
@@ -243,10 +240,9 @@ class SectorBatchValidator:
                 if sentiment_scores
                 else (0.0, 0.0)
             ),
-            "total_stocks": sum(
-                record.bullish_count + record.bearish_count for record in batch_records
-            ),
-            "total_volume": sum(record.total_volume or 0 for record in batch_records),
+            # Minimal schema summary (no bullish/bearish counts or total volume in 1D table)
+            "total_stocks": 0,
+            "total_volume": 0,
         }
 
 
@@ -260,3 +256,4 @@ def get_batch_validator() -> SectorBatchValidator:
     if _batch_validator is None:
         _batch_validator = SectorBatchValidator()
     return _batch_validator
+ 

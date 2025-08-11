@@ -130,7 +130,9 @@ class FMPMCPClient:
             return {"status": "error", "message": str(e), "profile": {}}
 
     async def get_quote(self, symbol: str) -> Dict[str, Any]:
-        """Get current quote for a stock"""
+        """Get current quote for a stock (DEPRECATED: Do not use in production)"""
+        # WARNING: This method is deprecated and should not be used in production pipelines.
+        # Use get_batch_quotes for all production data retrieval.
         try:
             if not self.api_key:
                 raise ValueError("No FMP API key configured")

@@ -22,14 +22,63 @@ from core.config import get_settings
 import pytest_asyncio
 
 # Import service dependencies for mocking
-from services.cache_service import get_cache_service
-from services.analysis_scheduler import get_analysis_scheduler
-from services.sector_calculator import get_sector_calculator
-from services.stock_ranker import get_stock_ranker
-from services.theme_detection import get_theme_detector
-from services.temperature_monitor import get_temperature_monitor
-from services.sympathy_network import get_sympathy_network
-from services.performance_monitor import get_performance_monitor
+import os
+ANALYSIS_ENABLED: bool = os.getenv("ANALYSIS_ENABLED", "0") == "1"
+
+if ANALYSIS_ENABLED:
+    from services.cache_service import get_cache_service
+    from services.analysis_scheduler import get_analysis_scheduler
+    from services.sector_calculator import get_sector_calculator
+    from services.stock_ranker import get_stock_ranker
+    from services.theme_detection import get_theme_detector
+    from services.temperature_monitor import get_temperature_monitor
+    from services.sympathy_network import get_sympathy_network
+    from services.performance_monitor import get_performance_monitor
+else:
+    async def get_cache_service():
+        class _Disabled:
+            async def get_statistics(self):
+                return {}
+            async def clear_all(self):
+                return None
+        return _Disabled()
+
+    def get_analysis_scheduler():
+        class _Disabled:
+            def get_status(self):
+                return {"status": "disabled"}
+        return _Disabled()
+
+    def get_sector_calculator():
+        class _Disabled:
+            pass
+        return _Disabled()
+
+    def get_stock_ranker():
+        class _Disabled:
+            pass
+        return _Disabled()
+
+    def get_theme_detector():
+        class _Disabled:
+            pass
+        return _Disabled()
+
+    def get_temperature_monitor():
+        class _Disabled:
+            pass
+        return _Disabled()
+
+    def get_sympathy_network():
+        class _Disabled:
+            pass
+        return _Disabled()
+
+    async def get_performance_monitor():
+        class _Disabled:
+            async def get_cache_performance(self):
+                return {}
+        return _Disabled()
 from services.data_freshness_service import get_freshness_service
 
 # Import E2E fixtures to make them available to all tests
