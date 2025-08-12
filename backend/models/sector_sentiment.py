@@ -23,10 +23,9 @@ class ColorClassification(Enum):
 
 class SectorSentiment(Base):
     """
-    Sector Sentiment Analysis Results with Batch Tracking
-
-    Stores timestamped sector sentiment calculations with atomic batch IDs
-    for reliable "all-or-nothing" sector analysis retrieval
+    Legacy multi-timeframe model retained only for read-compatibility.
+    Do not auto-create or write to this table. New code should use
+    timeframe-specific tables (e.g., sector_sentiment_1d).
     """
 
     __tablename__ = "sector_sentiment"

@@ -117,14 +117,15 @@ async def get_db_info():
         with SessionLocal() as db:
             # Get table counts
             from models.stock_universe import StockUniverse
-            from models.sector_sentiment import SectorSentiment
+            from models.sector_sentiment_1d import SectorSentiment1D
 
             # Basic counts
             stock_count = db.execute(
                 text("SELECT COUNT(*) FROM stock_universe")
             ).scalar()
+            # Use active 1D table for health instead of legacy sector_sentiment
             sector_count = db.execute(
-                text("SELECT COUNT(*) FROM sector_sentiment")
+                text("SELECT COUNT(*) FROM sector_sentiment_1d")
             ).scalar()
 
             # TimescaleDB specific info

@@ -12,7 +12,7 @@
     "start": "concurrently -k \"npm run backend:start\" \"npm run frontend:start\"",
     "backend:start": "python -m uvicorn main:app --app-dir backend --host 0.0.0.0 --port 8000",
     "frontend:start": "cd frontend && npm run start",
-    "dev:clean": "powershell -NoProfile -Command \"$pid=(Get-NetTCPConnection -LocalPort 8000 -ErrorAction SilentlyContinue | Select-Object -Expand OwningProcess -Unique); if($pid){ Stop-Process -Id $pid -Force }\"",
+    "dev:clean": "powershell -NoProfile -Command \"$listenerPid=(Get-NetTCPConnection -LocalPort 8000 -ErrorAction SilentlyContinue | Select-Object -Expand OwningProcess -Unique); if($listenerPid){ Stop-Process -Id $listenerPid -Force -ErrorAction SilentlyContinue; Write-Host 'Killed PID ' $listenerPid ' on port 8000' } else { Write-Host 'No listeners on port 8000' }\"",
     "test": "concurrently \"npm run backend:test\" \"npm run frontend:test\"",
     "backend:test": "cd backend && python -m pytest",
     "frontend:test": "cd frontend && npm run test",
