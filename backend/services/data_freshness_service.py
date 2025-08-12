@@ -11,6 +11,7 @@ from sqlalchemy import desc, and_, func
 import logging
 
 from models.sector_sentiment_1d import SectorSentiment1D
+from models.sector_sentiment_3d import SectorSentiment3D
 from core.database import SessionLocal
 
 logger = logging.getLogger(__name__)
@@ -20,12 +21,17 @@ class DataFreshnessService:
     """Service to validate data freshness using atomic batch operations"""
 
     def __init__(self):
-        # Simple 1-hour threshold for batch staleness
-        self.staleness_threshold = timedelta(hours=1)
+        # Per-timeframe staleness thresholds
+        self._staleness_thresholds: Dict[str, timedelta] = {
+            "1day": timedelta(hours=1),
+            "3day": timedelta(hours=24),
+            "1week": timedelta(hours=72),
+            "30min": timedelta(hours=1),
+        }
 
     def get_latest_complete_batch(
         self, db: Session, timeframe: str = "1day"
-    ) -> Tuple[List[SectorSentiment1D], bool]:
+    ) -> Tuple[List[Any], bool]:
         """
         Get the most recent complete batch of sector sentiment data
 
@@ -38,13 +44,18 @@ class DataFreshnessService:
             Returns empty list if no complete batch found
         """
         try:
-            # Get the most recent batch_id (1D timeframe is implicit)
+            # Select model by timeframe
+            model = SectorSentiment1D if timeframe == "1day" else (
+                SectorSentiment3D if timeframe == "3day" else SectorSentiment1D
+            )
+
+            # Get the most recent batch_id for the selected timeframe
             latest_batch_result = (
                 db.query(
-                    SectorSentiment1D.batch_id,
-                    func.max(SectorSentiment1D.timestamp).label("max_timestamp"),
+                    model.batch_id,
+                    func.max(model.timestamp).label("max_timestamp"),
                 )
-                .group_by(SectorSentiment1D.batch_id)
+                .group_by(model.batch_id)
                 .order_by(desc("max_timestamp"))
                 .first()
             )
@@ -56,11 +67,11 @@ class DataFreshnessService:
             latest_batch_id = latest_batch_result.batch_id
             latest_timestamp = latest_batch_result.max_timestamp
 
-            # Get all records from the latest batch (1D timeframe is implicit)
+            # Get all records from the latest batch for the timeframe
             batch_records = (
-                db.query(SectorSentiment1D)
-                .filter(SectorSentiment1D.batch_id == latest_batch_id)
-                .order_by(SectorSentiment1D.sector)
+                db.query(model)
+                .filter(model.batch_id == latest_batch_id)
+                .order_by(model.sector)
                 .all()
             )
 
@@ -72,8 +83,8 @@ class DataFreshnessService:
                 )
                 return [], True
 
-            # Check if the entire batch is stale
-            is_stale = self.is_batch_stale(latest_timestamp)
+            # Check if the entire batch is stale for this timeframe
+            is_stale = self.is_batch_stale(latest_timestamp, timeframe=timeframe)
 
             logger.info(
                 f"Retrieved complete batch {latest_batch_id} with "
@@ -85,7 +96,7 @@ class DataFreshnessService:
             logger.error(f"Error getting latest complete batch: {e}")
             return [], True
 
-    def is_batch_stale(self, batch_timestamp: datetime) -> bool:
+    def is_batch_stale(self, batch_timestamp: datetime, *, timeframe: str = "1day") -> bool:
         """
         Check if a batch is stale based on its timestamp
 
@@ -96,13 +107,14 @@ class DataFreshnessService:
             True if batch is older than staleness threshold
         """
         # Normalize to UTC-aware datetimes for safe comparison
-        cutoff_time = datetime.now(timezone.utc) - self.staleness_threshold
+        threshold = self._staleness_thresholds.get(timeframe, timedelta(hours=1))
+        cutoff_time = datetime.now(timezone.utc) - threshold
         ts = batch_timestamp
         if ts.tzinfo is None:
             ts = ts.replace(tzinfo=timezone.utc)
         return ts < cutoff_time
 
-    def get_batch_age_info(self, batch_timestamp: datetime) -> Dict[str, Any]:
+    def get_batch_age_info(self, batch_timestamp: datetime, *, timeframe: str = "1day") -> Dict[str, Any]:
         """
         Get detailed age information for a batch
 
@@ -115,13 +127,13 @@ class DataFreshnessService:
         try:
             ts = batch_timestamp if batch_timestamp.tzinfo else batch_timestamp.replace(tzinfo=timezone.utc)
             age = datetime.now(timezone.utc) - ts
-            is_stale = self.is_batch_stale(batch_timestamp)
+            is_stale = self.is_batch_stale(batch_timestamp, timeframe=timeframe)
 
             return {
                 "is_stale": is_stale,
                 "age_minutes": round(age.total_seconds() / 60, 1),
                 "threshold_minutes": round(
-                    self.staleness_threshold.total_seconds() / 60
+                    self._staleness_thresholds.get(timeframe, timedelta(hours=1)).total_seconds() / 60
                 ),
                 "timestamp": ts.isoformat(),
                 "status": "stale" if is_stale else "fresh",
@@ -146,16 +158,19 @@ class DataFreshnessService:
             List of batch summary dictionaries for specified timeframe
         """
         try:
-            # Get recent batches with their metadata (1D timeframe is implicit)
+            model = SectorSentiment1D if timeframe == "1day" else (
+                SectorSentiment3D if timeframe == "3day" else SectorSentiment1D
+            )
+            # Get recent batches with their metadata for timeframe
             batch_summaries = (
                 db.query(
-                    SectorSentiment1D.batch_id,
-                    func.count(SectorSentiment1D.sector).label("sector_count"),
-                    func.min(SectorSentiment1D.timestamp).label("earliest"),
-                    func.max(SectorSentiment1D.timestamp).label("latest"),
-                    func.avg(SectorSentiment1D.sentiment_score).label("avg_sentiment"),
+                    model.batch_id,
+                    func.count(model.sector).label("sector_count"),
+                    func.min(model.timestamp).label("earliest"),
+                    func.max(model.timestamp).label("latest"),
+                    func.avg(model.sentiment_score).label("avg_sentiment"),
                 )
-                .group_by(SectorSentiment1D.batch_id)
+                .group_by(model.batch_id)
                 .order_by(desc("latest"))
                 .limit(limit)
                 .all()
@@ -163,7 +178,7 @@ class DataFreshnessService:
 
             summaries = []
             for batch in batch_summaries:
-                age_info = self.get_batch_age_info(batch.latest)
+                age_info = self.get_batch_age_info(batch.latest, timeframe=timeframe)
                 summaries.append(
                     {
                         "batch_id": batch.batch_id,
@@ -186,7 +201,7 @@ class DataFreshnessService:
             return []
 
     def validate_batch_integrity(
-        self, batch_records: List[SectorSentiment1D]
+        self, batch_records: List[Any]
     ) -> Dict[str, Any]:
         """
         Validate the integrity of a batch before serving to API
@@ -239,10 +254,10 @@ class DataFreshnessService:
         """Get timestamp of the most recent complete batch for specified timeframe"""
         try:
             with SessionLocal() as db:
-                latest = (
-                    db.query(func.max(SectorSentiment1D.timestamp))
-                    .scalar()
+                model = SectorSentiment1D if timeframe == "1day" else (
+                    SectorSentiment3D if timeframe == "3day" else SectorSentiment1D
                 )
+                latest = db.query(func.max(model.timestamp)).scalar()
                 return latest
 
         except Exception as e:

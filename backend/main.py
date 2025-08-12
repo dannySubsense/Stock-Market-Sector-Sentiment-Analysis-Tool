@@ -11,7 +11,10 @@ from pathlib import Path
 
 # Import core modules (will be created)
 from core.config import get_settings
-from core.database import init_database
+from core.database import init_database, get_db
+from services.data_freshness_service import get_freshness_service
+from api.routes.sectors import get_sma_pipeline_3d
+import asyncio
 from api.routes import health, sectors, stocks, analysis, cache
 
 # Get settings
@@ -25,6 +28,25 @@ async def lifespan(app: FastAPI):
     print("Starting Market Sector Sentiment Analysis Tool")
     await init_database()
     print("Database initialized")
+
+    # Bootstrap: if no 3D batch exists, enqueue one recompute once at startup
+    try:
+        freshness = get_freshness_service()
+        # Use a short-lived session to check for existing 3D data
+        db = next(get_db())
+        batch, _ = freshness.get_latest_complete_batch(db, timeframe="3day")
+        if not batch:
+            async def _seed_3d():
+                try:
+                    sma3d = get_sma_pipeline_3d()
+                    await sma3d.run()
+                    print("Seeded initial 3D batch at startup")
+                except Exception as e:
+                    print(f"Failed to seed 3D batch at startup: {e}")
+
+            asyncio.create_task(_seed_3d())
+    except Exception as e:
+        print(f"Bootstrap 3D check failed: {e}")
 
     yield
 

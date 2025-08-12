@@ -56,7 +56,14 @@ class SectorDataService:
         WITH latest AS (
             SELECT
                 sp.symbol,
-                sp.changes_percentage,
+                -- Derive changes_percentage from price/previous_close if missing or null
+                COALESCE(
+                  NULLIF(sp.changes_percentage, NULL),
+                  CASE WHEN sp.previous_close IS NOT NULL AND sp.previous_close > 0
+                       THEN ((sp.price - sp.previous_close) / sp.previous_close) * 100
+                       ELSE NULL
+                  END
+                ) AS changes_percentage,
                 sp.volume,
                 sp.price,
                 ROW_NUMBER() OVER (
@@ -71,6 +78,7 @@ class SectorDataService:
         SELECT symbol, changes_percentage, volume, price
         FROM latest l
         WHERE l.rn = 1
+          AND l.changes_percentage IS NOT NULL
           AND l.changes_percentage >= {params['min_gap']}
           AND l.changes_percentage <= {params['max_gap']}
           AND l.volume >= {params['min_volume']}

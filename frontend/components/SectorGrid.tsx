@@ -5,7 +5,7 @@
  */
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { ChevronRightIcon, TrendingUpIcon, TrendingDownIcon, RefreshCwIcon } from 'lucide-react';
 
 // Types for sector data
@@ -264,7 +264,26 @@ const SectorGrid: React.FC<SectorGridProps> = ({
   const [lastUpdated, setLastUpdated] = useState<string | null>(null);
   const [calcMode, setCalcMode] = useState<'simple' | 'weighted'>('simple');
   const [lastBatchTs, setLastBatchTs] = useState<string | null>(null);
+  const [lastBatchTs3d, setLastBatchTs3d] = useState<string | null>(null);
   const [refreshMsg, setRefreshMsg] = useState<string | null>(null);
+  const [threeDaySimple, setThreeDaySimple] = useState<Record<string, number>>({});
+  const [threeDayWeighted, setThreeDayWeighted] = useState<Record<string, number>>({});
+  const last3DFetchRef = useRef<number>(0);
+
+  const apply3DToDisplay = () => {
+    const map = calcMode === 'weighted' ? threeDayWeighted : threeDaySimple;
+    if (!map || Object.keys(map).length === 0) return;
+    setDisplaySectors(prev => prev.map(item => {
+      const n = map[item.sector];
+      if (typeof n === 'number') {
+        return {
+          ...item,
+          timeframe_scores: { ...item.timeframe_scores, '3day': n },
+        };
+      }
+      return item;
+    }));
+  };
 
   // Small helper to fetch with timeout
   const fetchWithTimeout = async (url: string, options: RequestInit = {}, timeoutMs = 10000): Promise<Response> => {
@@ -326,7 +345,7 @@ const SectorGrid: React.FC<SectorGridProps> = ({
               return 'dark_green';
             };
 
-            return {
+            const base: SectorData = {
               sector: s.sector,
               sentiment_score: norm,
               sentiment_normalized: norm,
@@ -339,6 +358,12 @@ const SectorGrid: React.FC<SectorGridProps> = ({
               top_bullish: [],
               top_bearish: [],
             } as SectorData;
+            // If we already have cached 3D values, apply them without refetch
+            const maybe3d = (calcMode === 'weighted' ? threeDayWeighted : threeDaySimple)[s.sector];
+            if (typeof maybe3d === 'number') {
+              base.timeframe_scores['3day'] = maybe3d;
+            }
+            return base;
           });
 
         setDisplaySectors([...normalized, defaultThemeCard]);
@@ -365,15 +390,60 @@ const SectorGrid: React.FC<SectorGridProps> = ({
     }
   };
 
+  const fetch3DData = async (force: boolean = false) => {
+    const now = Date.now();
+    if (!force && now - last3DFetchRef.current < 15000) return;
+    try {
+      const url3dBase = `${API_BASE}/api/sectors/3day/`;
+      const resp3d = await fetchWithTimeout(url3dBase, { cache: 'no-store' }, 10000);
+      if (resp3d.ok) {
+        const data3d = await resp3d.json();
+        const list3d: any[] = Array.isArray(data3d?.sectors)
+          ? data3d.sectors
+          : (data3d?.sectors && typeof data3d.sectors === 'object' ? Object.values(data3d.sectors) : []);
+        const simple: Record<string, number> = {};
+        const weighted: Record<string, number> = {};
+        for (const s of list3d) {
+          const nSimple = (typeof s?.sentiment_normalized === 'number')
+            ? s.sentiment_normalized
+            : (typeof s?.sentiment_score === 'number' ? s.sentiment_score / 100.0 : 0);
+          const nWeighted = (typeof s?.sentiment_normalized_weighted === 'number')
+            ? s.sentiment_normalized_weighted
+            : (typeof s?.weighted_sentiment_score === 'number' ? s.weighted_sentiment_score / 100.0 : nSimple);
+          if (s?.sector) {
+            simple[String(s.sector)] = nSimple;
+            weighted[String(s.sector)] = nWeighted;
+          }
+        }
+        setThreeDaySimple(simple);
+        setThreeDayWeighted(weighted);
+        const meta3dTs = (data3d?.metadata?.timestamp as string | undefined) || null;
+        if (meta3dTs) setLastBatchTs3d(meta3dTs);
+        last3DFetchRef.current = now;
+        // Apply to current display based on toggle
+        apply3DToDisplay();
+      }
+    } catch (e) {
+      console.warn('3D fetch skipped or failed', e);
+    }
+  };
+
   // Load data on component mount
   useEffect(() => {
     fetchSectorData(false);
+    fetch3DData(true); // initial 3D load
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [calcMode]);
+  }, []);
+
+  // When toggle changes, reapply 3D from cached maps without refetching
+  useEffect(() => {
+    apply3DToDisplay();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [calcMode, threeDaySimple, threeDayWeighted]);
 
   // Poll for a new persisted batch (checks simple endpoint regardless of toggle)
   const pollUntilNewBatch = async (prevTs: string | null, maxTries = 45, intervalMs = 2000): Promise<boolean> => {
-    const baseUrl = 'http://localhost:8000/api/sectors/1day/';
+    const baseUrl = `${API_BASE}/api/sectors/1day/`;
     for (let i = 0; i < maxTries; i++) {
       try {
         const resp = await fetchWithTimeout(baseUrl, { cache: 'no-store' }, 10000);
@@ -393,45 +463,53 @@ const SectorGrid: React.FC<SectorGridProps> = ({
     return false;
   };
 
+  // 3D is close-to-close; no recompute from UI. We keep lastBatchTs3d for display only.
+
   // Handle refresh button click: POST recompute then poll until a new batch is persisted
   const handleRefresh = async () => {
     if (isRefreshing) return;
     setIsRefreshing(true);
     setRefreshMsg('Scheduling recompute...');
 
-    const recomputeUrl = `${API_BASE}/api/sectors/1day/recompute`;
+    const recomputeUrl1d = `${API_BASE}/api/sectors/1day/recompute`;
     const headers: HeadersInit = { 'Content-Type': 'application/json', accept: 'application/json' };
     const adminToken = process.env.NEXT_PUBLIC_ADMIN_RECOMPUTE_TOKEN;
     if (adminToken) headers['X-Admin-Token'] = adminToken as string;
 
     const prevTs = lastBatchTs;
+    const prevTs3d = lastBatchTs3d;
 
     try {
-      const resp = await fetchWithTimeout(recomputeUrl, { method: 'POST', headers }, 10000);
-      if (resp.status === 202) {
-        setRefreshMsg('Recompute accepted. Waiting for new batch...');
-      } else if (resp.status === 409) {
-        setRefreshMsg('Recompute already in progress. Waiting...');
-      } else if (resp.status === 429) {
-        setRefreshMsg('Cooldown active. Waiting for next eligible batch...');
-      } else if (resp.status === 403) {
+      // Only 1D recompute from UI. 3D is close-to-close (read-only here).
+      const r1 = await fetchWithTimeout(recomputeUrl1d, { method: 'POST', headers }, 10000);
+
+      if (r1.status === 403) {
         setRefreshMsg('Recompute disabled by server settings.');
         await fetchSectorData(true);
         return;
-      } else if (resp.status === 401) {
+      }
+      if (r1.status === 401) {
         setRefreshMsg('Unauthorized. Missing or invalid admin token.');
         await fetchSectorData(true);
         return;
+      }
+      if (r1.status === 429) {
+        setRefreshMsg('Cooldown active. Waiting for next eligible batch...');
+      } else if (r1.status === 409) {
+        setRefreshMsg('Recompute already in progress. Waiting...');
+      } else if (r1.status === 202) {
+        setRefreshMsg('Recompute accepted. Waiting for new 1D batch...');
       } else {
-        setRefreshMsg(`Unexpected status ${resp.status}. Polling for updates...`);
+        setRefreshMsg('Recompute scheduled. Polling for 1D updates...');
       }
 
-      // Poll the simple endpoint for a new persisted timestamp
-      const gotNew = await pollUntilNewBatch(prevTs);
-      if (gotNew) {
+      // Poll 1D for new persisted timestamp
+      const gotNew1d = await pollUntilNewBatch(prevTs);
+      if (gotNew1d) {
         setRefreshMsg(null);
         // After new batch, fetch according to current toggle (simple or weighted)
         await fetchSectorData(true);
+        await fetch3DData(true); // exactly one 3D fetch per refresh
       } else {
         setRefreshMsg('Timed out waiting for recompute. Showing latest available.');
         await fetchSectorData(true);

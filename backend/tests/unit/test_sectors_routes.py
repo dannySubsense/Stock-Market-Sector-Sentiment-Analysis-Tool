@@ -248,3 +248,12 @@ class TestSectorsRouter:
         assert "timeframe" in metadata
         assert metadata["timeframe"] == "1day"
         assert "is_stale" in metadata
+
+    def test_get_all_sectors_3day_weighted_preview(self, client: TestClient):
+        """Test GET /api/sectors/3day/?calc=weighted returns preview structure"""
+        response = client.get("/api/sectors/3day/?calc=weighted")
+        assert response.status_code in [200, 404]
+        if response.status_code == 200:
+            data = response.json()
+            assert data.get("metadata", {}).get("preview") is True
+            assert data.get("metadata", {}).get("calc") == "weighted"
