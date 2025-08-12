@@ -268,7 +268,11 @@ const SectorGrid: React.FC<SectorGridProps> = ({
   const [refreshMsg, setRefreshMsg] = useState<string | null>(null);
   const [threeDaySimple, setThreeDaySimple] = useState<Record<string, number>>({});
   const [threeDayWeighted, setThreeDayWeighted] = useState<Record<string, number>>({});
+  const [oneWeekSimple, setOneWeekSimple] = useState<Record<string, number>>({});
+  const [oneWeekWeighted, setOneWeekWeighted] = useState<Record<string, number>>({});
   const last3DFetchRef = useRef<number>(0);
+  const last1WFetchRef = useRef<number>(0);
+  const last30mFetchRef = useRef<number>(0);
 
   const apply3DToDisplay = () => {
     const map = calcMode === 'weighted' ? threeDayWeighted : threeDaySimple;
@@ -279,6 +283,21 @@ const SectorGrid: React.FC<SectorGridProps> = ({
         return {
           ...item,
           timeframe_scores: { ...item.timeframe_scores, '3day': n },
+        };
+      }
+      return item;
+    }));
+  };
+
+  const apply1WToDisplay = () => {
+    const map = calcMode === 'weighted' ? oneWeekWeighted : oneWeekSimple;
+    if (!map || Object.keys(map).length === 0) return;
+    setDisplaySectors(prev => prev.map(item => {
+      const n = map[item.sector];
+      if (typeof n === 'number') {
+        return {
+          ...item,
+          timeframe_scores: { ...item.timeframe_scores, '1week': n },
         };
       }
       return item;
@@ -358,10 +377,14 @@ const SectorGrid: React.FC<SectorGridProps> = ({
               top_bullish: [],
               top_bearish: [],
             } as SectorData;
-            // If we already have cached 3D values, apply them without refetch
+            // If we already have cached 3D/1W values, apply them without refetch
             const maybe3d = (calcMode === 'weighted' ? threeDayWeighted : threeDaySimple)[s.sector];
             if (typeof maybe3d === 'number') {
               base.timeframe_scores['3day'] = maybe3d;
+            }
+            const maybe1w = (calcMode === 'weighted' ? oneWeekWeighted : oneWeekSimple)[s.sector];
+            if (typeof maybe1w === 'number') {
+              base.timeframe_scores['1week'] = maybe1w;
             }
             return base;
           });
@@ -428,18 +451,103 @@ const SectorGrid: React.FC<SectorGridProps> = ({
     }
   };
 
+  const fetch1WData = async (force: boolean = false) => {
+    const now = Date.now();
+    if (!force && now - last1WFetchRef.current < 15000) return;
+    try {
+      const url1w = `${API_BASE}/api/sectors/1week/`;
+      const resp = await fetchWithTimeout(url1w, { cache: 'no-store' }, 10000);
+      if (resp.ok) {
+        const data = await resp.json();
+        const list: any[] = Array.isArray(data?.sectors)
+          ? data.sectors
+          : (data?.sectors && typeof data.sectors === 'object' ? Object.values(data.sectors) : []);
+        const simple: Record<string, number> = {};
+        const weighted: Record<string, number> = {};
+        for (const s of list) {
+          const nSimple = (typeof s?.sentiment_normalized === 'number')
+            ? s.sentiment_normalized
+            : (typeof s?.sentiment_score === 'number' ? s.sentiment_score / 100.0 : 0);
+          const nWeighted = (typeof s?.sentiment_normalized_weighted === 'number')
+            ? s.sentiment_normalized_weighted
+            : (typeof s?.weighted_sentiment_score === 'number' ? s.weighted_sentiment_score / 100.0 : nSimple);
+          if (s?.sector) {
+            simple[String(s.sector)] = nSimple;
+            weighted[String(s.sector)] = nWeighted;
+          }
+        }
+        setOneWeekSimple(simple);
+        setOneWeekWeighted(weighted);
+        last1WFetchRef.current = now;
+        apply1WToDisplay();
+      }
+    } catch (e) {
+      console.warn('1W fetch skipped or failed', e);
+    }
+  };
+
+  const fetch30MData = async (force: boolean = false) => {
+    const now = Date.now();
+    if (!force && now - last30mFetchRef.current < 15000) return;
+    try {
+      const url = `${API_BASE}/api/sectors/30min/`;
+      const resp = await fetchWithTimeout(url, { cache: 'no-store' }, 10000);
+      if (resp.ok) {
+        const data = await resp.json();
+        const list: any[] = Array.isArray(data?.sectors)
+          ? data.sectors
+          : (data?.sectors && typeof data.sectors === 'object' ? Object.values(data.sectors) : []);
+        const simple: Record<string, number> = {};
+        const weighted: Record<string, number> = {};
+        for (const s of list) {
+          const nSimple = (typeof s?.sentiment_normalized === 'number')
+            ? s.sentiment_normalized
+            : (typeof s?.sentiment_score === 'number' ? s.sentiment_score / 100.0 : 0);
+          const nWeighted = (typeof s?.sentiment_normalized_weighted === 'number')
+            ? s.sentiment_normalized_weighted
+            : (typeof s?.weighted_sentiment_score === 'number' ? s.weighted_sentiment_score / 100.0 : nSimple);
+          if (s?.sector) {
+            simple[String(s.sector)] = nSimple;
+            weighted[String(s.sector)] = nWeighted;
+          }
+        }
+        // Apply to display from cache
+        setDisplaySectors(prev => prev.map(item => {
+          const map = calcMode === 'weighted' ? weighted : simple;
+          const n = map[item.sector];
+          if (typeof n === 'number') {
+            return { ...item, timeframe_scores: { ...item.timeframe_scores, '30min': n } };
+          }
+          return item;
+        }));
+        last30mFetchRef.current = now;
+      }
+    } catch (e) {
+      console.warn('30M fetch skipped or failed', e);
+    }
+  };
+
   // Load data on component mount
   useEffect(() => {
     fetchSectorData(false);
     fetch3DData(true); // initial 3D load
+    fetch1WData(true); // initial 1W load
+    fetch30MData(true); // initial 30M load
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // When user toggles simple/weighted, refetch 1D preview only
+  useEffect(() => {
+    fetchSectorData(true);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [calcMode]);
 
   // When toggle changes, reapply 3D from cached maps without refetching
   useEffect(() => {
     apply3DToDisplay();
+    apply1WToDisplay();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [calcMode, threeDaySimple, threeDayWeighted]);
+  }, [calcMode, threeDaySimple, threeDayWeighted, oneWeekSimple, oneWeekWeighted]);
 
   // Poll for a new persisted batch (checks simple endpoint regardless of toggle)
   const pollUntilNewBatch = async (prevTs: string | null, maxTries = 45, intervalMs = 2000): Promise<boolean> => {
@@ -510,6 +618,8 @@ const SectorGrid: React.FC<SectorGridProps> = ({
         // After new batch, fetch according to current toggle (simple or weighted)
         await fetchSectorData(true);
         await fetch3DData(true); // exactly one 3D fetch per refresh
+        await fetch1WData(true); // exactly one 1W fetch per refresh
+        await fetch30MData(true); // exactly one 30M fetch per refresh
       } else {
         setRefreshMsg('Timed out waiting for recompute. Showing latest available.');
         await fetchSectorData(true);

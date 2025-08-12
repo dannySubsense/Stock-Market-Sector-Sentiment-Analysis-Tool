@@ -21,6 +21,7 @@ from services.fmp_batch_data_service import FMPBatchDataService
 from services.sma_1d_pipeline import get_sma_pipeline_1d
 from services.sma_3d_pipeline import get_sma_pipeline_3d
 from services.sma_1w_pipeline import get_sma_pipeline_1w
+from services.sma_30m_pipeline import get_sma_pipeline_30m
 from services.time_utils import utc_to_et_fields
 import asyncio
 
@@ -48,7 +49,7 @@ async def get_all_sectors_1day(
         # Preview recompute without persistence if calc is requested
         if calc in {"simple", "weighted"}:
             # Short-lived cache (e.g., 15s) to avoid recomputing on quick toggles
-            cache_key = f"3day:{calc}"
+            cache_key = f"1day:{calc}"
             now_ts = datetime.now(timezone.utc)
             exp = _preview_cache_3d_expiry.get(cache_key)
             if exp and exp > now_ts:
@@ -238,6 +239,93 @@ async def get_all_sectors_1week(
 async def recompute_1week_blocked():
     """UI does not support 1week recompute; ops can enable later with force semantics."""
     return {"status": "blocked", "message": "1week recompute is disabled from API"}
+
+
+@router.get("/30min/", response_model=Dict[str, Any])
+async def get_all_sectors_30min(
+    include_stale: bool = True,
+    db: Session = Depends(get_db),
+    freshness_service: DataFreshnessService = Depends(get_freshness_service),
+):
+    try:
+        batch_records, is_stale = freshness_service.get_latest_complete_batch(
+            db, timeframe="30min"
+        )
+        if not batch_records:
+            raise HTTPException(status_code=404, detail="No 30min data available")
+        if not include_stale and is_stale:
+            raise HTTPException(status_code=410, detail="Latest 30min data is stale")
+        integrity = freshness_service.validate_batch_integrity(batch_records)
+        sectors = [r.to_dict() for r in batch_records]
+        age = freshness_service.get_batch_age_info(batch_records[0].timestamp, timeframe="30min")
+        et_meta = utc_to_et_fields(batch_records[0].timestamp)
+        return {
+            "sectors": sectors,
+            "metadata": {
+                "batch_id": batch_records[0].batch_id,
+                "timestamp": batch_records[0].timestamp.isoformat(),
+                "timeframe": "30min",
+                "is_stale": is_stale,
+                "staleness_threshold_hours": 1,
+                "age_minutes": age["age_minutes"],
+                "sector_count": len(batch_records),
+                "integrity_valid": integrity["valid"],
+                "integrity_issues": integrity.get("issues", []),
+                **et_meta,
+            },
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error getting all sectors for 30min: {e}")
+        raise HTTPException(status_code=500, detail="Internal server error")
+
+
+_recompute_lock_30m = asyncio.Lock()
+
+
+@router.post("/30min/recompute", status_code=status.HTTP_202_ACCEPTED)
+async def recompute_30min(
+    request: Request,
+    db: Session = Depends(get_db),
+    freshness_service: DataFreshnessService = Depends(get_freshness_service),
+):
+    try:
+        if not settings.enable_recompute_api:
+            raise HTTPException(status_code=403, detail="Recompute API disabled")
+
+        token = request.headers.get("X-Admin-Token")
+        if settings.admin_recompute_token and token != settings.admin_recompute_token:
+            raise HTTPException(status_code=401, detail="Unauthorized")
+
+        # Cooldown: 60 seconds for 30m timeframe
+        last_batch, _ = freshness_service.get_latest_complete_batch(db, timeframe="30min")
+        if last_batch:
+            last_ts = last_batch[0].timestamp
+            age = freshness_service.get_batch_age_info(last_ts, timeframe="30min")
+            if (age.get("age_minutes", 0) or 0) * 60 < 60:
+                raise HTTPException(status_code=429, detail="Recompute cooldown active")
+
+        if _recompute_lock_30m.locked():
+            raise HTTPException(status_code=409, detail="Another recompute is in progress")
+
+        async def _do_recompute_30m():
+            async with _recompute_lock_30m:
+                sma = get_sma_pipeline_30m()
+                await sma.run()
+
+        sync = request.query_params.get("sync")
+        if isinstance(sync, str) and sync.lower() == "true":
+            await _do_recompute_30m()
+            return {"status": "accepted", "message": "Recompute completed (sync)", "timeframe": "30min"}
+        else:
+            asyncio.create_task(_do_recompute_30m())
+            return {"status": "accepted", "message": "Recompute scheduled", "timeframe": "30min"}
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error scheduling 30min recompute: {e}")
+        raise HTTPException(status_code=500, detail="Internal server error")
 
 @router.get("/1day/debug/sector-inputs", response_model=Dict[str, Any])
 async def debug_sector_inputs_1day(

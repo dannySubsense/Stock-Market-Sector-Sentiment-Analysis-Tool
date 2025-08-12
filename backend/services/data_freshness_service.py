@@ -13,6 +13,7 @@ import logging
 from models.sector_sentiment_1d import SectorSentiment1D
 from models.sector_sentiment_3d import SectorSentiment3D
 from models.sector_sentiment_1w import SectorSentiment1W
+from models.sector_sentiment_30min import SectorSentiment30M
 from core.database import SessionLocal
 
 logger = logging.getLogger(__name__)
@@ -52,6 +53,8 @@ class DataFreshnessService:
                 model = SectorSentiment3D
             elif timeframe in ("1week", "1w"):
                 model = SectorSentiment1W
+            elif timeframe in ("30min", "30m"):
+                model = SectorSentiment30M
             else:
                 model = SectorSentiment1D
 
@@ -170,6 +173,8 @@ class DataFreshnessService:
                 model = SectorSentiment3D
             elif timeframe in ("1week", "1w"):
                 model = SectorSentiment1W
+            elif timeframe in ("30min", "30m"):
+                model = SectorSentiment30M
             else:
                 model = SectorSentiment1D
             # Get recent batches with their metadata for timeframe
