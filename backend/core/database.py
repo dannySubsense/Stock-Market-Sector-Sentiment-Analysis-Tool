@@ -1,42 +1,41 @@
 """
 Database configuration and setup for Market Sector Sentiment Analysis Tool
-Using SQLite for development, with easy migration path to PostgreSQL/TimescaleDB
+Using PostgreSQL + TimescaleDB for production-ready time-series data
 """
-from sqlalchemy import create_engine, MetaData
+
+from sqlalchemy import create_engine, MetaData, text
 from sqlalchemy.orm import declarative_base
 from sqlalchemy.orm import sessionmaker, Session
-from sqlalchemy.pool import StaticPool
+from sqlalchemy.pool import QueuePool
 from pathlib import Path
 import os
 from contextlib import asynccontextmanager
-from typing import AsyncGenerator
+from typing import AsyncGenerator, Generator
 
 from core.config import get_settings
 
 # Get settings
 settings = get_settings()
 
-# Database URL
-if settings.credentials and settings.credentials.database.sqlite_path:
-    db_path = settings.credentials.database.sqlite_path
-else:
-    db_path = "./data/sentiment.db"
+# PostgreSQL Database Configuration
+POSTGRES_USER = "market_user"
+POSTGRES_PASSWORD = "market_password"
+POSTGRES_HOST = "127.0.0.1"
+POSTGRES_PORT = "5433"
+POSTGRES_DB = "market_sentiment"
 
-# Ensure data directory exists
-Path(db_path).parent.mkdir(parents=True, exist_ok=True)
+# Build PostgreSQL connection URL (password required by client even with trust auth)
+DATABASE_URL = f"postgresql://{POSTGRES_USER}:{POSTGRES_PASSWORD}@{POSTGRES_HOST}:{POSTGRES_PORT}/{POSTGRES_DB}"
 
-# SQLite database URL
-DATABASE_URL = f"sqlite:///{db_path}"
-
-# Create engine
+# Create engine with PostgreSQL optimizations
 engine = create_engine(
     DATABASE_URL,
-    connect_args={
-        "check_same_thread": False,  # Allow multiple threads (needed for FastAPI)
-        "timeout": 30  # 30 second timeout
-    },
-    poolclass=StaticPool,
-    echo=settings.debug if settings else False
+    poolclass=QueuePool,
+    pool_size=10,
+    max_overflow=20,
+    pool_pre_ping=True,
+    pool_recycle=3600,
+    echo=settings.debug if settings else False,
 )
 
 # Create session factory
@@ -48,7 +47,8 @@ Base = declarative_base()
 # Metadata for migrations
 metadata = MetaData()
 
-def get_db() -> Session:
+
+def get_db() -> Generator[Session, None, None]:
     """Get database session"""
     db = SessionLocal()
     try:
@@ -56,54 +56,60 @@ def get_db() -> Session:
     finally:
         db.close()
 
-async def init_database():
-    """Initialize database with tables"""
-    print("Initializing SQLite database...")
-    
-    # Import all models to register them
-    from models import stock_universe, sector_sentiment, stock_data
-    
-    # Create all tables
-    Base.metadata.create_all(bind=engine)
-    
-    print(f"Database initialized at {db_path}")
-    
-    # Run initial data seeding if needed
-    await seed_initial_data()
 
-async def seed_initial_data():
-    """Seed initial data for development"""
-    print("Seeding initial data...")
-    
-    # Import models
-    from models.sector_sentiment import SectorSentiment
-    from models.stock_universe import StockUniverse
-    
-    with SessionLocal() as db:
-        # Check if we already have data
-        existing_sectors = db.query(SectorSentiment).count()
-        if existing_sectors > 0:
-            print("Database already has data, skipping seed")
-            return
-        
-        # Create initial sector entries
-        sectors = [
-            "technology", "healthcare", "energy", "financial",
-            "consumer_discretionary", "industrials", "materials", "utilities"
-        ]
-        
-        for sector in sectors:
-            sector_record = SectorSentiment(
-                sector=sector,
-                sentiment_score=0.0,
-                color_classification="blue_neutral",
-                confidence_level=0.5,
-                last_updated=None
+async def init_database():
+    """Initialize PostgreSQL + TimescaleDB database"""
+    print("Initializing PostgreSQL + TimescaleDB database...")
+
+    try:
+        # Test connection
+        with engine.connect() as conn:
+            result = conn.execute(text("SELECT version()"))
+            version_row = result.fetchone()
+            version = version_row[0] if version_row else "Unknown"
+            print(f"Connected to: {version}")
+
+            # Check TimescaleDB
+            result = conn.execute(
+                text(
+                    "SELECT default_version FROM pg_available_extensions WHERE name = 'timescaledb'"
+                )
             )
-            db.add(sector_record)
-        
-        db.commit()
-        print(f"Seeded {len(sectors)} sectors successfully")
+            timescale_version = result.fetchone()
+            if timescale_version:
+                print(f"TimescaleDB available: {timescale_version[0]}")
+            else:
+                print("WARNING: TimescaleDB extension not found")
+
+    except Exception as e:
+        print(f"Database connection failed: {e}")
+        print("Make sure PostgreSQL is running: docker compose up -d postgres")
+        raise
+
+    # Conditionally create only active tables
+    if settings and getattr(settings, "auto_create_schema", False):
+        print("AUTO_CREATE_SCHEMA is enabled - creating active tables only...")
+        # Import only the active production models
+        from models.stock_universe import StockUniverse
+        from models.stock_data import StockPrice1D
+        from models.sector_sentiment_1d import SectorSentiment1D
+        from models.sector_gappers_1d import SectorGappers1D
+
+        # Create only the explicitly listed active tables
+        Base.metadata.create_all(
+            bind=engine,
+            tables=[
+                StockUniverse.__table__,
+                StockPrice1D.__table__,
+                SectorSentiment1D.__table__,
+                SectorGappers1D.__table__,
+            ],
+        )
+    else:
+        print("AUTO_CREATE_SCHEMA is disabled - skipping automatic table creation")
+
+    print(f"PostgreSQL database ready at {POSTGRES_HOST}:{POSTGRES_PORT}/{POSTGRES_DB}")
+
 
 async def get_db_info():
     """Get database information for health checks"""
@@ -112,23 +118,44 @@ async def get_db_info():
             # Get table counts
             from models.stock_universe import StockUniverse
             from models.sector_sentiment import SectorSentiment
-            
-            stock_count = db.query(StockUniverse).count()
-            sector_count = db.query(SectorSentiment).count()
-            
+
+            # Basic counts
+            stock_count = db.execute(
+                text("SELECT COUNT(*) FROM stock_universe")
+            ).scalar()
+            sector_count = db.execute(
+                text("SELECT COUNT(*) FROM sector_sentiment")
+            ).scalar()
+
+            # TimescaleDB specific info
+            hypertable_info = db.execute(
+                text(
+                    """
+                SELECT schemaname, tablename, num_chunks 
+                FROM timescaledb_information.hypertables
+            """
+                )
+            ).fetchall()
+
             return {
                 "status": "healthy",
-                "database_path": db_path,
+                "database_type": "PostgreSQL + TimescaleDB",
+                "connection_url": f"postgresql://{POSTGRES_HOST}:{POSTGRES_PORT}/{POSTGRES_DB}",
                 "stock_count": stock_count,
                 "sector_count": sector_count,
-                "engine_info": str(engine.url)
+                "hypertables": [
+                    {"schema": ht[0], "table": ht[1], "chunks": ht[2]}
+                    for ht in hypertable_info
+                ],
             }
     except Exception as e:
         return {
             "status": "unhealthy",
             "error": str(e),
-            "database_path": db_path
+            "database_type": "PostgreSQL + TimescaleDB",
+            "connection_url": f"postgresql://{POSTGRES_HOST}:{POSTGRES_PORT}/{POSTGRES_DB}",
         }
+
 
 # Context manager for database sessions
 @asynccontextmanager
@@ -138,4 +165,4 @@ async def get_db_session() -> AsyncGenerator[Session, None]:
     try:
         yield db
     finally:
-        db.close() 
+        db.close()

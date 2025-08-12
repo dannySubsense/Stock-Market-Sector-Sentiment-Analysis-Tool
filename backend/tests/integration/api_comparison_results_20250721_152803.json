@@ -1,0 +1,214 @@
+{
+  "test_summary": {
+    "symbols_tested": [
+      "SOUN",
+      "BBAI",
+      "PATH",
+      "OCUL",
+      "SMCI"
+    ],
+    "test_timestamp": "2025-07-21T19:28:03.542095",
+    "total_symbols": 5,
+    "successful_tests": 4
+  },
+  "individual_comparisons": [
+    {
+      "symbol": "SOUN",
+      "fmp_result": {
+        "success": false,
+        "response_time_ms": 1.2907981872558594,
+        "data_quality_score": 0.0,
+        "validation_issues": [
+          "API call failed"
+        ],
+        "error_message": "Event loop is closed",
+        "data_preview": null
+      },
+      "polygon_result": {
+        "success": true,
+        "response_time_ms": 113.30461502075195,
+        "data_quality_score": 1.0,
+        "validation_issues": [],
+        "error_message": null,
+        "data_preview": {
+          "price": 11.79,
+          "previousClose": 12.81,
+          "volume": 56686893.0,
+          "avgVolume": 50377534.0,
+          "timestamp": null
+        }
+      },
+      "data_consistency_score": 0.0,
+      "recommended_api": "Polygon",
+      "recommendation_reason": "Only Polygon succeeded (FMP error: Event loop is closed)"
+    },
+    {
+      "symbol": "BBAI",
+      "fmp_result": {
+        "success": true,
+        "response_time_ms": 136.26503944396973,
+        "data_quality_score": 1.0,
+        "validation_issues": [],
+        "error_message": null,
+        "data_preview": {
+          "price": 7.44,
+          "previousClose": 7.95,
+          "volume": 100161452,
+          "avgVolume": 151243953.6,
+          "marketCap": 2166446160,
+          "timestamp": 1753126079
+        }
+      },
+      "polygon_result": {
+        "success": true,
+        "response_time_ms": 67.02780723571777,
+        "data_quality_score": 1.0,
+        "validation_issues": [],
+        "error_message": null,
+        "data_preview": {
+          "price": 7.4374,
+          "previousClose": 7.95,
+          "volume": 102123799.0,
+          "avgVolume": 198431523.0,
+          "timestamp": null
+        }
+      },
+      "data_consistency_score": 1.0,
+      "recommended_api": "Polygon",
+      "recommendation_reason": "Polygon faster response (67ms vs 136ms)"
+    },
+    {
+      "symbol": "PATH",
+      "fmp_result": {
+        "success": true,
+        "response_time_ms": 35.16197204589844,
+        "data_quality_score": 1.0,
+        "validation_issues": [],
+        "error_message": null,
+        "data_preview": {
+          "price": 12.435,
+          "previousClose": 12.59,
+          "volume": 18598793,
+          "avgVolume": 10566039,
+          "marketCap": 6653207926,
+          "timestamp": 1753126080
+        }
+      },
+      "polygon_result": {
+        "success": true,
+        "response_time_ms": 58.444976806640625,
+        "data_quality_score": 1.0,
+        "validation_issues": [],
+        "error_message": null,
+        "data_preview": {
+          "price": 12.435,
+          "previousClose": 12.59,
+          "volume": 18598060.0,
+          "avgVolume": 10032702.0,
+          "timestamp": null
+        }
+      },
+      "data_consistency_score": 1.0,
+      "recommended_api": "FMP",
+      "recommendation_reason": "FMP faster response (35ms vs 58ms)"
+    },
+    {
+      "symbol": "OCUL",
+      "fmp_result": {
+        "success": true,
+        "response_time_ms": 403.2728672027588,
+        "data_quality_score": 1.0,
+        "validation_issues": [],
+        "error_message": null,
+        "data_preview": {
+          "price": 11.61,
+          "previousClose": 11.33,
+          "volume": 1547803,
+          "avgVolume": 2425148,
+          "marketCap": 1849473000,
+          "timestamp": 1753126077
+        }
+      },
+      "polygon_result": {
+        "success": true,
+        "response_time_ms": 62.007904052734375,
+        "data_quality_score": 1.0,
+        "validation_issues": [],
+        "error_message": null,
+        "data_preview": {
+          "price": 11.61,
+          "previousClose": 11.33,
+          "volume": 1547805.0,
+          "avgVolume": 2449333.0,
+          "timestamp": null
+        }
+      },
+      "data_consistency_score": 1.0,
+      "recommended_api": "Polygon",
+      "recommendation_reason": "Polygon faster response (62ms vs 403ms)"
+    },
+    {
+      "symbol": "SMCI",
+      "fmp_result": {
+        "success": true,
+        "response_time_ms": 35.173892974853516,
+        "data_quality_score": 1.0,
+        "validation_issues": [],
+        "error_message": null,
+        "data_preview": {
+          "price": 52.1,
+          "previousClose": 51.77,
+          "volume": 29171775,
+          "avgVolume": 46040745,
+          "marketCap": 31094217800,
+          "timestamp": 1753126079
+        }
+      },
+      "polygon_result": {
+        "success": true,
+        "response_time_ms": 66.01428985595703,
+        "data_quality_score": 1.0,
+        "validation_issues": [],
+        "error_message": null,
+        "data_preview": {
+          "price": 52.1012,
+          "previousClose": 51.77,
+          "volume": 29170918.0,
+          "avgVolume": 36987450.0,
+          "timestamp": null
+        }
+      },
+      "data_consistency_score": 1.0,
+      "recommended_api": "FMP",
+      "recommendation_reason": "FMP faster response (35ms vs 66ms)"
+    }
+  ],
+  "performance_analysis": {
+    "fmp": {
+      "avg_response_time_ms": 122.23291397094727,
+      "max_response_time_ms": 403.2728672027588,
+      "success_rate": 80.0
+    },
+    "polygon": {
+      "avg_response_time_ms": 73.35991859436035,
+      "max_response_time_ms": 113.30461502075195,
+      "success_rate": 100.0
+    }
+  },
+  "overall_recommendation": {
+    "recommended_primary_api": "Polygon",
+    "confidence_percentage": 60.0,
+    "symbol_results": {
+      "fmp_wins": 2,
+      "polygon_wins": 3,
+      "ties": 0,
+      "failures": 0
+    },
+    "quality_metrics": {
+      "fmp_avg_data_quality": 1.0,
+      "polygon_avg_data_quality": 1.0,
+      "avg_data_consistency": 1.0
+    },
+    "recommendation_reasoning": "Polygon performed better in 3/5 tests (60%); FMP average data quality: 1.00; Polygon average data quality: 1.00; Data consistency between APIs: 1.00"
+  }
+}

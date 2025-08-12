@@ -1,0 +1,10 @@
+{
+  "timestamp": "2025-07-21T17:46:21.115981",
+  "results": [
+    {
+      "success": true,
+      "sector": "utilities",
+      "stocks_processed": 0,
+      "time_minutes": 0.0007239699363708497,
+      "sentiment_score": 0.0,
+      "color": 

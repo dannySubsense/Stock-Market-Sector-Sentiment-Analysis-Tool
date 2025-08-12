@@ -499,6 +499,199 @@ STOCK_RANKING_CRITERIA = {
 }
 ```
 
+#### Day 20-21: Gap Analysis & Stock Ranking Engine
+
+**Strategic Logic: Enhanced Stock Ranking with Gap Analysis**
+
+**Gap Analysis Implementation:**
+```
+GAP_ANALYSIS_CONFIG = {
+    'threshold_percentage': 30,  # 30% gap threshold for "Gapper" classification
+    'calculation_method': 'abs(current_price - previous_close) / previous_close * 100',
+    'data_sources': {
+        'current_price': 'FMP API price field',
+        'previous_close': 'FMP API previousClose field',
+        'open_price': 'FMP API open field'
+    },
+    'small_cap_focus': {
+        'market_cap_range': '$10M - $2B',
+        'volume_requirement': '1M+ daily volume',
+        'price_range': '$2.00 - $100.00'
+    }
+}
+
+# Example Gap Calculation for Small-Cap Stock
+# SOUN: current_price=$5.20, previous_close=$4.50, open=$4.80
+# Gap % = abs(5.20 - 4.50) / 4.50 * 100 = 15.56%
+# Gapper = False (below 30% threshold)
+```
+
+**Enhanced Stock Ranking JSON Structure:**
+```json
+{
+  "top_bullish_rankings": [
+    {
+      "symbol": "SOUN",
+      "sector": "technology", 
+      "current_price": 5.20,
+      "previous_close": 4.50,
+      "open_price": 4.80,
+      "gap_percentage": 15.56,
+      "gapper": false,
+      "volume": 2100000,
+      "market_cap": 180000000,
+      "rank_reason": "Strong AI momentum, above-average volume"
+    },
+    {
+      "symbol": "BBAI", 
+      "sector": "technology",
+      "current_price": 3.80,
+      "previous_close": 2.90,
+      "open_price": 3.10,
+      "gap_percentage": 31.03,
+      "gapper": true,
+      "volume": 1200000,
+      "market_cap": 120000000,
+      "rank_reason": "Defense AI contract announcement"
+    }
+  ],
+  "top_bearish_rankings": [
+    {
+      "symbol": "PRPL",
+      "sector": "consumer_cyclical",
+      "current_price": 4.10,
+      "previous_close": 5.20,
+      "open_price": 5.00,
+      "gap_percentage": -21.15,
+      "gapper": false,
+      "volume": 1800000,
+      "market_cap": 450000000,
+      "rank_reason": "Earnings miss, declining volume"
+    }
+  ]
+}
+```
+
+**Enhanced Database Schema for Stock Rankings:**
+```sql
+-- Add ranking columns to sector_sentiment_1d table
+ALTER TABLE sector_sentiment_1d 
+ADD COLUMN top_bullish_rankings TEXT,
+ADD COLUMN top_bearish_rankings TEXT;
+
+-- Create index for efficient ranking queries
+CREATE INDEX idx_sector_sentiment_1d_rankings 
+ON sector_sentiment_1d(sector, timestamp) 
+WHERE top_bullish_rankings IS NOT NULL OR top_bearish_rankings IS NOT NULL;
+
+-- Add trigger to validate small-cap universe
+CREATE OR REPLACE FUNCTION validate_small_cap_universe()
+RETURNS TRIGGER AS $$
+BEGIN
+    -- Ensure only small-cap stocks are included in rankings
+    -- Market cap validation logic here
+    RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+CREATE TRIGGER trigger_validate_small_cap_universe
+    BEFORE INSERT OR UPDATE ON sector_sentiment_1d
+    FOR EACH ROW EXECUTE FUNCTION validate_small_cap_universe();
+```
+
+**Gap Analysis Engine Implementation:**
+```python
+class GapAnalysisEngine:
+    def __init__(self, threshold_percentage: int = 30):
+        self.threshold_percentage = threshold_percentage
+        
+    def calculate_gap_percentage(self, current_price: float, previous_close: float) -> float:
+        """Calculate gap percentage using FMP data"""
+        if previous_close == 0:
+            return 0.0
+        return abs(current_price - previous_close) / previous_close * 100
+        
+    def is_gapper(self, gap_percentage: float) -> bool:
+        """Determine if stock meets gapper threshold"""
+        return gap_percentage >= self.threshold_percentage
+        
+    def analyze_stock_gap(self, stock_data: dict) -> dict:
+        """Complete gap analysis for a stock"""
+        gap_percentage = self.calculate_gap_percentage(
+            stock_data['current_price'], 
+            stock_data['previous_close']
+        )
+        return {
+            'symbol': stock_data['symbol'],
+            'gap_percentage': gap_percentage,
+            'gapper': self.is_gapper(gap_percentage),
+            'current_price': stock_data['current_price'],
+            'previous_close': stock_data['previous_close'],
+            'open_price': stock_data['open_price']
+        }
+```
+
+**Enhanced Stock Ranker Implementation:**
+```python
+class EnhancedStockRanker:
+    def __init__(self, gap_engine: GapAnalysisEngine):
+        self.gap_engine = gap_engine
+        
+    def rank_stocks_by_sector(self, sector_stocks: List[dict], sector_sentiment: str) -> dict:
+        """Rank stocks within a sector for bullish/bearish selection"""
+        # Apply gap analysis to all stocks
+        analyzed_stocks = [
+            {**stock, **self.gap_engine.analyze_stock_gap(stock)}
+            for stock in sector_stocks
+        ]
+        
+        # Filter for small-cap stocks only
+        small_cap_stocks = [
+            stock for stock in analyzed_stocks
+            if 10_000_000 <= stock['market_cap'] <= 2_000_000_000
+        ]
+        
+        # Rank by gap percentage and other criteria
+        bullish_candidates = [
+            stock for stock in small_cap_stocks
+            if stock['gap_percentage'] > 0  # Positive gap
+        ]
+        bearish_candidates = [
+            stock for stock in small_cap_stocks
+            if stock['gap_percentage'] < 0  # Negative gap
+        ]
+        
+        # Select top 3 for each direction
+        top_bullish = sorted(bullish_candidates, 
+                           key=lambda x: x['gap_percentage'], reverse=True)[:3]
+        top_bearish = sorted(bearish_candidates, 
+                           key=lambda x: abs(x['gap_percentage']), reverse=True)[:3]
+        
+        return {
+            'top_bullish_rankings': top_bullish,
+            'top_bearish_rankings': top_bearish
+        }
+```
+
+**Implementation Tasks:**
+```python
+# 1. Create GapAnalysisEngine class
+# 2. Enhance StockRanker with gap analysis integration
+# 3. Update sector_sentiment_1d model with ranking columns
+# 4. Implement database schema updates
+# 5. Add small-cap validation triggers
+# 6. Update API responses to include ranking data
+# 7. Test with real FMP data for accuracy
+```
+
+**Deliverables:**
+- Gap analysis engine with 30% threshold calculation
+- Enhanced stock ranker with small-cap filtering
+- Database schema updates for ranking storage
+- JSON structure for top 3 bullish/bearish rankings
+- Small-cap universe validation triggers
+- Integration with existing sector calculation pipeline
+
 **Example Top 3 Selection Process:**
 ```
 Technology Sector Ranking Example (Bearish Day):

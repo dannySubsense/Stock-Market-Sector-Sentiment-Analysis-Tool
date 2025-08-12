@@ -1,23 +1,27 @@
 # Small Cap Universe Building Strategy
 
-## Universe Criteria
-- **Market Cap Range**: $10M - $2B  
-- **Price Range**: $1 - $100
-- **Minimum Volume**: 1M+ shares daily
-- **Float Requirements**: >5M (micro cap), >10M (small cap)
-- **Exchanges**: NASDAQ, NYSE only
-- **Exclusions**: OTC, nano float stocks
+## Overview
+This document outlines the strategy for building and maintaining a universe of small-cap stocks for sector sentiment analysis.
 
-## Target Universe Size
-- **Total Expected**: ~1,200-1,500 stocks
-- **Micro Caps**: ~400-600 stocks ($10M-$300M)
-- **Small Caps**: ~800-900 stocks ($300M-$2B)
+## Original Strategy (Pre-Testing)
+Initial approach based on SDD requirements:
 
-## FMP API Strategy
+### Market Cap Criteria
+- **Minimum**: $10M market cap
+- **Maximum**: $2B market cap
+- **Target**: Small-cap focus avoiding micro-caps and mid-caps
 
-### Phase 1: Universe Building (1 API Call)
+### Volume & Price Filters
+- **Volume**: 1M+ daily volume (original SDD target)
+- **Price**: $1.00+ (original SDD target)
+- **Upper Price Limit**: $100.00 (to avoid high-priced stocks)
+
+### Exchange Selection
+- **Primary**: NASDAQ, NYSE
+- **Rationale**: Major exchanges for liquidity and reliability
+
+### FMP API Configuration
 ```javascript
-// Single efficient call to build entire universe
 stockScreener({
   marketCapMoreThan: 10_000_000,      // $10M minimum
   marketCapLowerThan: 2_000_000_000,  // $2B maximum
@@ -30,85 +34,98 @@ stockScreener({
 })
 ```
 
-**Result**: ~1,500 stocks with sector/industry data included
-**API Calls**: 1 call total
-**Time**: <30 seconds
+---
 
-### Phase 2: Sector Classification (Built-in)
-FMP screener returns sector/industry data automatically:
-- Healthcare & Biotechnology
-- Technology & Software  
-- Financial Services
-- Industrial & Manufacturing
-- Consumer Goods & Services
-- Energy & Utilities
-- Real Estate
-- Materials & Basic Industries
+## **REAL-WORLD TESTED BENCHMARKS** ⭐
+*Updated: July 21, 2025*
 
-### Phase 3: Real-time Updates (Optional)
-For daily universe maintenance:
-- **Quote Updates**: Use batch quotes (1 call for multiple stocks)
-- **Market Cap Changes**: Re-run screener (1 call)
-- **Volume Validation**: Use 5-day averages
+### **Working Configuration (Verified)**
+After systematic testing with FMP Ultimate API, the following configuration delivers optimal small-cap universe coverage:
 
-## API Call Economics
+#### **Final Optimized Filters**
+- **Market Cap**: $10M - $2B (unchanged)
+- **Volume Threshold**: **25,000 shares/day** (lowered from 1M)
+- **Price Threshold**: **$0.50** (lowered from $1.00)
+- **Exchange**: NASDAQ,NYSE (unchanged)
+- **Upper Price Limit**: **REMOVED** (no priceLowerThan filter)
+- **API Limit**: 5000 (tested sweet spot)
 
-### FMP Plan Requirements
-- **Starter Plan**: 300 calls/minute ($15/month)
-- **Peak Usage**: ~60 calls/minute (well under limit)
-- **Universe Building**: 1 call (instant)
-- **Daily Operations**: 10-20 calls
+#### **Volume Threshold Testing Results**
+| Volume Threshold | Universe Size | Notes |
+|------------------|---------------|-------|
+| 1,000,000 (1M)   | 373 stocks    | Original SDD target - too restrictive |
+| 500,000 (500K)   | 682 stocks    | Still below target |
+| 250,000 (250K)   | 1,066 stocks  | Approaching target |
+| 100,000 (100K)   | 1,790 stocks  | Close to target |
+| **25,000 (25K)**  | **3,073 stocks** | ✅ **OPTIMAL - Exceeds >2k target** |
 
-### Efficiency Comparison
-| Approach | API Calls | Time | Complexity |
-|----------|-----------|------|------------|
-| **FMP Screener** | 1 call | 30 sec | Low |
-| **Polygon.io Manual** | 3,000+ calls | 10+ min | High |
-| **Russell 2000 + Filter** | 100 calls | 2 min | Medium |
+#### **Final FMP API Call (Working)**
+```javascript
+{
+  "marketCapMoreThan": 10000000,      // $10M
+  "marketCapLowerThan": 2000000000,   // $2B  
+  "volumeMoreThan": 25000,            // 25K volume (optimized)
+  "priceMoreThan": 0.50,              // $0.50 (optimized)
+  "exchange": "NASDAQ,NYSE",
+  "limit": 5000,                      // Tested sweet spot
+  // NO priceLowerThan = no upper price limit
+}
+```
 
-## Implementation Phases
+### **Key Learnings**
+1. **Volume was the primary constraint** - reducing from 1M to 25K dramatically increased universe size
+2. **Price threshold optimization** - lowering from $1.00 to $0.50 captured more small-caps
+3. **Upper price limit removal** - eliminating $100 cap added more coverage
+4. **FMP API parameter casing** - CRITICAL: Use camelCase (marketCapMoreThan) not snake_case
+5. **Limit parameter importance** - 5000 is the tested sweet spot for comprehensive coverage
 
-### Week 1: FMP Setup & Testing
-1. Subscribe to FMP Starter Plan
-2. Test stockScreener with our criteria
-3. Validate result quality vs. known small caps
-4. Measure API response times
+### **Production Recommendation**
+**Use 25K volume threshold configuration** - delivers 3,073 stocks, significantly exceeding the >2k target while maintaining quality small-cap criteria.
 
-### Week 2: Universe Validation
-1. Cross-reference with Russell 2000 holdings
-2. Validate sector classifications
-3. Test volume and float calculations
-4. Identify any missing quality stocks
+---
 
-### Week 3: Production Pipeline
-1. Build automated universe builder
-2. Set up daily refresh process
-3. Create sector performance tracking
-4. Implement change detection
+## Target Metrics
 
-### Week 4: Monitoring & Optimization
-1. Track universe stability
-2. Monitor for new IPOs/delistings
-3. Validate sector rotation patterns
-4. Optimize refresh frequency
+### Expected Universe Size
+- **Real-World Verified**: **3,073 stocks** (25K volume threshold)
+- **Original SDD Target**: ~2,000 stocks (theoretical)
+- **Quality Threshold**: >2,000 for robust sector analysis
 
-## Success Metrics
-- ✅ Universe size: 1,200-1,500 stocks
-- ✅ Market cap accuracy: >95%
-- ✅ Volume threshold compliance: >90%
-- ✅ Sector distribution matches expectations
-- ✅ API performance: <1 minute total
-- ✅ Daily maintenance: <10 API calls
+### Sector Distribution
+Target representation across 8 core sectors for balanced analysis.
 
-## Risk Mitigation
-- **Backup Data Source**: Polygon.io for validation
-- **Index Cross-reference**: Russell 2000 completeness check
-- **Manual Review**: Sample validation of edge cases
-- **Cost Control**: Monitor API usage patterns
+### Update Frequency
+- **Daily refresh** during market hours
+- **Inactive stock cleanup** before new data retrieval
+- **Market cap validation** to maintain small-cap focus
 
-## Next Steps
-1. Set up FMP subscription with proper plan
-2. Run initial screener test
-3. Compare results with our Polygon.io sample
-4. Validate sector accuracy
-5. Build production pipeline
+## Implementation Notes
+
+### Database Storage
+- Use `stock_universe` table with `is_active` flag for current universe management
+- Store both current and historical universe data for analysis
+
+### API Integration
+- **Primary**: FMP Ultimate plan for stock screening
+- **Backup**: Polygon.io for price data (if needed)
+- **Rate Limiting**: Respect API limits with proper throttling
+
+### Quality Assurance
+- **Market cap validation**: Ensure all stocks fall within $10M-$2B range
+- **Volume verification**: Confirm daily volume meets minimum threshold
+- **Exchange validation**: NASDAQ/NYSE only
+- **Price validation**: Minimum $0.50, no upper limit
+
+## Troubleshooting
+
+### Common Issues
+1. **Universe too small**: Lower volume threshold (test with 25K)
+2. **Large-cap contamination**: Verify camelCase API parameters
+3. **API parameter errors**: Use camelCase (marketCapMoreThan) not snake_case
+4. **Rate limiting**: Implement proper delays between API calls
+
+### Validation Steps
+1. Check universe size after build (target: >2k stocks)
+2. Verify market cap distribution (should be $10M-$2B)
+3. Confirm exchange distribution (NASDAQ/NYSE only)
+4. Validate volume threshold compliance

@@ -130,7 +130,9 @@ class FMPMCPClient:
             return {"status": "error", "message": str(e), "profile": {}}
 
     async def get_quote(self, symbol: str) -> Dict[str, Any]:
-        """Get current quote for a stock"""
+        """Get current quote for a stock (DEPRECATED: Do not use in production)"""
+        # WARNING: This method is deprecated and should not be used in production pipelines.
+        # Use get_batch_quotes for all production data retrieval.
         try:
             if not self.api_key:
                 raise ValueError("No FMP API key configured")
@@ -153,7 +155,10 @@ class FMPMCPClient:
             return {"status": "error", "message": str(e), "quote": {}}
 
     async def get_historical_prices(
-        self, symbol: str, from_date: Optional[str] = None, to_date: Optional[str] = None
+        self,
+        symbol: str,
+        from_date: Optional[str] = None,
+        to_date: Optional[str] = None,
     ) -> Dict[str, Any]:
         """Get historical price data for a stock"""
         try:
@@ -233,15 +238,13 @@ class FMPMCPClient:
             logger.error(f"Failed to get market cap for {symbol}: {e}")
             return {"status": "error", "message": str(e), "market_cap_data": {}}
 
-
-
     async def get_stock_screener(self, criteria: Dict[str, Any]) -> Dict[str, Any]:
         """
         Generic stock screener - accepts any criteria
-        
+
         Args:
             criteria: Dictionary of screening criteria (marketCapMoreThan, volumeMoreThan, etc.)
-        
+
         Returns:
             Dict with status, stocks, and metadata
         """
@@ -250,11 +253,11 @@ class FMPMCPClient:
                 raise ValueError("No FMP API key configured")
 
             url = f"{self.base_url}/v3/stock-screener"
-            
+
             # Build parameters from criteria
             params = {"apikey": self.api_key}
             params.update(criteria)
-            
+
             # Ensure limit is set for complete results
             if "limit" not in params:
                 params["limit"] = "10000"
@@ -315,6 +318,85 @@ class FMPMCPClient:
         except Exception as e:
             logger.error(f"Failed to get {list_type}: {e}")
             return {"status": "error", "message": str(e), "stocks": []}
+
+    async def get_batch_quotes(
+        self, symbols: List[str], batch_size: int = 100
+    ) -> List[Dict[str, Any]]:
+        """
+        Get quotes for multiple symbols using FMP batch quote capability
+
+        Args:
+            symbols: List of stock symbols
+            batch_size: Number of symbols per batch call (max recommended: 100)
+
+        Returns:
+            List of quote dictionaries with price, volume, and market data
+        """
+        try:
+            if not self.api_key:
+                raise ValueError("No FMP API key configured")
+
+            if not symbols:
+                return []
+
+            all_quotes = []
+
+            # Process symbols in batches
+            for i in range(0, len(symbols), batch_size):
+                batch_symbols = symbols[i : i + batch_size]
+                symbols_str = ",".join(batch_symbols)
+
+                url = f"{self.base_url}/v3/quote/{symbols_str}"
+                params = {"apikey": self.api_key}
+
+                logger.info(
+                    f"FMP batch quote: {len(batch_symbols)} symbols (batch {i//batch_size + 1})"
+                )
+
+                # Retry logic for rate limiting
+                for attempt in range(3):
+                    try:
+                        response = await self.client.get(url, params=params)
+
+                        if response.status_code == 429:
+                            logger.warning(
+                                f"FMP rate limit hit, attempt {attempt + 1}/3. Waiting..."
+                            )
+                            if attempt < 2:
+                                await asyncio.sleep(5)
+                            continue
+
+                        response.raise_for_status()
+                        batch_data = response.json()
+
+                        if isinstance(batch_data, list):
+                            all_quotes.extend(batch_data)
+                        elif isinstance(batch_data, dict):
+                            all_quotes.append(batch_data)
+
+                        break  # Success, exit retry loop
+
+                    except Exception as e:
+                        if attempt == 2:  # Last attempt
+                            logger.error(
+                                f"FMP batch quote failed for symbols {batch_symbols}: {e}"
+                            )
+                            # Continue with next batch instead of failing completely
+                            break
+                        await asyncio.sleep(5)
+
+                # Small delay between batches to respect rate limits
+                if i + batch_size < len(symbols):
+                    await asyncio.sleep(0.1)  # 100ms delay between batches
+
+            logger.info(
+                f"FMP batch quotes completed: {len(all_quotes)} quotes for {len(symbols)} symbols"
+            )
+            return all_quotes
+
+        except Exception as e:
+            logger.error(f"FMP batch quotes failed: {e}")
+            return []
 
     async def close(self):
         """Close the HTTP client"""

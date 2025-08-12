@@ -154,3 +154,14 @@ site/
 # MCP development files
 mcp_logs/
 *.mcp 
+
+# Archived/legacy and ops helper scripts (not part of active code)
+backend/archived_ops_scripts/
+backend/archived_validation_scripts/
+backend/services/legacy_archive/
+backend/tests_legacy/
+
+# Python test/coverage artifacts
+.pytest_cache/
+htmlcov/
+.coverage

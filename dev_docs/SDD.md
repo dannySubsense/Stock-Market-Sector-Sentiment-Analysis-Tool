@@ -17,7 +17,7 @@ The Market Sector Sentiment Analysis Tool implements a **two-slice development s
 
 - **12-slot grid** with 11 FMP sectors + 1 theme slot (PRIMARY)
 - **Multi-timeframe tracking** (30min, 1D, 3D, 1W)
-- **Top 3 bullish/bearish** stocks per sector
+- **Top 3 bullish/bearish stocks per sector** with gap analysis (30% threshold)
 - **1:1 FMP sector mapping** (no complex classification needed)
 - **Theme slot placeholder** (future hot theme tracking)
 - **Performance Target:** <1s sector grid loading, 75%+ directional accuracy
@@ -38,8 +38,9 @@ The Market Sector Sentiment Analysis Tool implements a **two-slice development s
 
 ```
 ├── Sector Dashboard (PRIMARY) - 12-slot grid (11 FMP sectors + 1 theme)
-├── Multi-timeframe Display (30min, 1D, 3D, 1W)
-├── Top Stocks Display (Top 3 bullish/bearish per sector)
+├── Multi-timeframe Display (30min, 1D, 3D, 1W) INCREMENTAL APPROACH_ 1DAY TIMEFRAME WILL BE IMPLEMENTED FIRST. THE OTHER TIMEFRAMES WILL BE BUILT USING THE 1DAY PIPELINE AS A TEMPLATE.
+├── Top Stocks Display (Top 3 bullish/bearish per sector with gap indicators)
+├── Gap Analysis Indicators (Gapper boolean, Gap % display)
 ├── On-demand Analysis Trigger
 └── Real-time Updates (30-minute intervals)
 ```
@@ -50,6 +51,8 @@ The Market Sector Sentiment Analysis Tool implements a **two-slice development s
 ├── Stock Universe Engine (FMP single-call approach)
 ├── Sector Mapping Engine (1:1 FMP → internal mapping)
 ├── Sector Performance Calculator (volume-weighted analysis)
+├── Enhanced Stock Ranker (top 3 bullish/bearish with gap analysis)
+├── Gap Analysis Engine (30% threshold calculation)
 ├── Color Classification Logic (5-tier sentiment system)
 ├── Background Analysis Scheduler (8PM, 4AM, 8AM)
 └── On-demand Analysis Engine (3-5 minute full refresh)
@@ -102,8 +105,9 @@ The Market Sector Sentiment Analysis Tool implements a **two-slice development s
 - **Frontend:** Next.js 14 + React 18, TypeScript, Tailwind CSS
 - **Backend:** FastAPI + Python 3.11, Pydantic validation
 - **Database:** PostgreSQL 15 + TimescaleDB + Redis
-- **External APIs:** Polygon.io MCP ($29/month), FMP MCP (free tier)
+- **External APIs:** FMP MCP (Ultimate tier) / Polygon.io MCP as needed if required ($29/month)
 - **Configuration:** YAML-based volatility weight system, future-ready for ML
+- **Gap Analysis:** FMP price data integration with 30% threshold calculation
 - **Performance:** <1s sector grid, <5min on-demand analysis
 
 ### Slice 1B Additional Requirements
@@ -146,8 +150,10 @@ The Market Sector Sentiment Analysis Tool implements a **two-slice development s
 | Market Cap       | $10M - $300M  | $300M - $2B   | Daily universe refresh at 8PM    |
 | Min Daily Volume | 1M+ shares    | 1M+ shares    | 20-day average validation        |
 | Min Price        | $2.00         | $2.00         | Penny stock exclusion            |
-| Float            | >5M shares    | >10M shares   | Shortability assessment base     |
+| Float            | >=5M shares    | >10M shares   | Shortability assessment base     |
 | Exchange         | NASDAQ/NYSE   | NASDAQ/NYSE   | Regulatory oversight requirement |
+
+**Universe Size**: Market-driven based on screening criteria only. Typically 1,500-2,500 stocks depending on market conditions, IPO activity, and delistings. No artificial size limits applied.
 
 ### Sector Category Framework
 
@@ -224,6 +230,94 @@ TIMEFRAME_CALCULATIONS = {
         'alert_threshold': '±15% divergence'
     }
 }
+```
+
+### Stock Ranking Architecture
+
+**Enhanced Stock Ranking with Gap Analysis**
+
+The system identifies top 3 bullish and top 3 bearish stocks per sector using gap analysis to prioritize stocks with significant price movements.
+
+**Gap Analysis Implementation:**
+```python
+GAP_ANALYSIS_CONFIG = {
+    'threshold_percentage': 30,  # 30% gap threshold for "Gapper" classification
+    'calculation_method': 'abs(current_price - previous_close) / previous_close * 100',
+    'data_sources': {
+        'current_price': 'FMP API price field',
+        'previous_close': 'FMP API previousClose field', 
+        'open_price': 'FMP API open field'
+    },
+    'small_cap_focus': {
+        'market_cap_range': '$10M - $2B',
+        'volume_requirement': '1M+ daily volume',
+        'price_range': '$2.00 - $100.00'
+    }
+}
+
+# Example Gap Calculation for Small-Cap Stock
+# SOUN: current_price=$5.20, previous_close=$4.50, open=$4.80
+# Gap % = abs(5.20 - 4.50) / 4.50 * 100 = 15.56%
+# Gapper = False (below 30% threshold)
+```
+
+**Stock Ranking JSON Structure:**
+```json
+{
+  "top_bullish_rankings": [
+    {
+      "symbol": "SOUN",
+      "sector": "technology", 
+      "current_price": 5.20,
+      "previous_close": 4.50,
+      "open_price": 4.80,
+      "gap_percentage": 15.56,
+      "gapper": false,
+      "volume": 2100000,
+      "market_cap": 180000000,
+      "rank_reason": "Strong AI momentum, above-average volume"
+    },
+    {
+      "symbol": "BBAI", 
+      "sector": "technology",
+      "current_price": 3.80,
+      "previous_close": 2.90,
+      "open_price": 3.10,
+      "gap_percentage": 31.03,
+      "gapper": true,
+      "volume": 1200000,
+      "market_cap": 120000000,
+      "rank_reason": "Defense AI contract announcement"
+    }
+  ],
+  "top_bearish_rankings": [
+    {
+      "symbol": "PRPL",
+      "sector": "consumer_cyclical",
+      "current_price": 4.10,
+      "previous_close": 5.20,
+      "open_price": 5.00,
+      "gap_percentage": -21.15,
+      "gapper": false,
+      "volume": 1800000,
+      "market_cap": 450000000,
+      "rank_reason": "Earnings miss, declining volume"
+    }
+  ]
+}
+```
+
+**Database Schema Enhancement:**
+```sql
+-- Add ranking columns to sector_sentiment_1d table
+ALTER TABLE sector_sentiment_1d 
+ADD COLUMN top_bullish_rankings TEXT,
+ADD COLUMN top_bearish_rankings TEXT;
+
+-- Create index for efficient ranking queries
+CREATE INDEX idx_sector_sentiment_1d_rankings 
+ON sector_sentiment_1d(sector, timestamp) 
+WHERE top_bullish_rankings IS NOT NULL OR top_bearish_rankings IS NOT NULL;
 ```
 
 ## Slice 1B Intelligence Strategies
