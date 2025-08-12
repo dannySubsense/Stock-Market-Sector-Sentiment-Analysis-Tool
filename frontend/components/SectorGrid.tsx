@@ -257,6 +257,7 @@ const SectorCard: React.FC<{
 const SectorGrid: React.FC<SectorGridProps> = ({
   onSectorClick = () => {},
 }) => {
+  const API_BASE = process.env.NEXT_PUBLIC_API_BASE || 'http://localhost:8000';
   const [displaySectors, setDisplaySectors] = useState<SectorData[]>([...defaultSectors, defaultThemeCard]);
   const [isLoading, setIsLoading] = useState(false); // initial data load/skeleton state
   const [isRefreshing, setIsRefreshing] = useState(false); // user-initiated refresh state
@@ -285,7 +286,7 @@ const SectorGrid: React.FC<SectorGridProps> = ({
       setIsLoading(true);
     }
     try {
-      const baseUrl = 'http://localhost:8000/api/sectors/1day/';
+      const baseUrl = `${API_BASE}/api/sectors/1day/`;
       const url = calcMode === 'weighted' ? `${baseUrl}?calc=weighted` : baseUrl;
       const response = await fetchWithTimeout(url, { cache: 'no-store' }, 10000);
       if (response.ok) {
@@ -398,7 +399,7 @@ const SectorGrid: React.FC<SectorGridProps> = ({
     setIsRefreshing(true);
     setRefreshMsg('Scheduling recompute...');
 
-    const recomputeUrl = 'http://localhost:8000/api/sectors/1day/recompute';
+    const recomputeUrl = `${API_BASE}/api/sectors/1day/recompute`;
     const headers: HeadersInit = { 'Content-Type': 'application/json', accept: 'application/json' };
     const adminToken = process.env.NEXT_PUBLIC_ADMIN_RECOMPUTE_TOKEN;
     if (adminToken) headers['X-Admin-Token'] = adminToken as string;
