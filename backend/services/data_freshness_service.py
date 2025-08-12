@@ -12,6 +12,7 @@ import logging
 
 from models.sector_sentiment_1d import SectorSentiment1D
 from models.sector_sentiment_3d import SectorSentiment3D
+from models.sector_sentiment_1w import SectorSentiment1W
 from core.database import SessionLocal
 
 logger = logging.getLogger(__name__)
@@ -45,9 +46,14 @@ class DataFreshnessService:
         """
         try:
             # Select model by timeframe
-            model = SectorSentiment1D if timeframe == "1day" else (
-                SectorSentiment3D if timeframe == "3day" else SectorSentiment1D
-            )
+            if timeframe == "1day":
+                model = SectorSentiment1D
+            elif timeframe == "3day":
+                model = SectorSentiment3D
+            elif timeframe in ("1week", "1w"):
+                model = SectorSentiment1W
+            else:
+                model = SectorSentiment1D
 
             # Get the most recent batch_id for the selected timeframe
             latest_batch_result = (
@@ -158,9 +164,14 @@ class DataFreshnessService:
             List of batch summary dictionaries for specified timeframe
         """
         try:
-            model = SectorSentiment1D if timeframe == "1day" else (
-                SectorSentiment3D if timeframe == "3day" else SectorSentiment1D
-            )
+            if timeframe == "1day":
+                model = SectorSentiment1D
+            elif timeframe == "3day":
+                model = SectorSentiment3D
+            elif timeframe in ("1week", "1w"):
+                model = SectorSentiment1W
+            else:
+                model = SectorSentiment1D
             # Get recent batches with their metadata for timeframe
             batch_summaries = (
                 db.query(

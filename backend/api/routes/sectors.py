@@ -20,6 +20,7 @@ from datetime import datetime, timezone, timedelta
 from services.fmp_batch_data_service import FMPBatchDataService
 from services.sma_1d_pipeline import get_sma_pipeline_1d
 from services.sma_3d_pipeline import get_sma_pipeline_3d
+from services.sma_1w_pipeline import get_sma_pipeline_1w
 from services.time_utils import utc_to_et_fields
 import asyncio
 
@@ -173,6 +174,70 @@ async def get_all_sectors_1day(
         logger.error(f"Error getting all sectors for 1day: {e}")
         raise HTTPException(status_code=500, detail="Internal server error")
 
+
+@router.get("/1week/", response_model=Dict[str, Any])
+async def get_all_sectors_1week(
+    include_stale: bool = True,
+    db: Session = Depends(get_db),
+    freshness_service: DataFreshnessService = Depends(get_freshness_service),
+):
+    """
+    Get all sector sentiment data for 1week timeframe (persisted batch)
+    """
+    try:
+        batch_records, is_stale = freshness_service.get_latest_complete_batch(
+            db, timeframe="1week"
+        )
+
+        if not batch_records:
+            raise HTTPException(
+                status_code=404,
+                detail="No complete sector sentiment batches found for 1week timeframe",
+            )
+
+        if not include_stale and is_stale:
+            raise HTTPException(
+                status_code=410,
+                detail="Latest 1week data is stale. Refresh analysis recommended.",
+            )
+
+        integrity = freshness_service.validate_batch_integrity(batch_records)
+        sectors = [record.to_dict() for record in batch_records]
+        batch_age = freshness_service.get_batch_age_info(
+            batch_records[0].timestamp, timeframe="1week"
+        )
+        et_meta = utc_to_et_fields(batch_records[0].timestamp)
+        response = {
+            "sectors": sectors,
+            "metadata": {
+                "batch_id": batch_records[0].batch_id,
+                "timestamp": batch_records[0].timestamp.isoformat(),
+                "timeframe": "1week",
+                "is_stale": is_stale,
+                "staleness_threshold_hours": 72,
+                "age_minutes": batch_age["age_minutes"],
+                "sector_count": len(batch_records),
+                "integrity_valid": integrity["valid"],
+                "integrity_issues": integrity.get("issues", []),
+                **et_meta,
+            },
+        }
+        if is_stale:
+            response["warning"] = (
+                "Data is stale for 1week timeframe. Consider refreshing analysis."
+            )
+        return response
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error getting all sectors for 1week: {e}")
+        raise HTTPException(status_code=500, detail="Internal server error")
+
+
+@router.post("/1week/recompute", status_code=status.HTTP_403_FORBIDDEN)
+async def recompute_1week_blocked():
+    """UI does not support 1week recompute; ops can enable later with force semantics."""
+    return {"status": "blocked", "message": "1week recompute is disabled from API"}
 
 @router.get("/1day/debug/sector-inputs", response_model=Dict[str, Any])
 async def debug_sector_inputs_1day(
