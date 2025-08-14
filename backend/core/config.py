@@ -79,6 +79,10 @@ class Settings(BaseSettings):
     stock_refresh_interval: int = 300  # 5 minutes
     news_refresh_interval: int = 600  # 10 minutes
 
+    # Intraday ingestion (30m support)
+    enable_intraday_ingest: bool = True
+    intraday_ingest_interval_seconds: int = 300  # 5 minutes
+
     # Analysis Thresholds
     extreme_gap_threshold: float = 0.30  # 30%
     large_gap_threshold: float = 0.15  # 15%

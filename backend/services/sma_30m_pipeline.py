@@ -10,9 +10,7 @@ from typing import Dict, Any, List
 from sqlalchemy import text
 from datetime import datetime, timezone, timedelta
 
-from core.database import SessionLocal
-from services.sector_filters import SectorFilters
-from services.sector_data_service import SectorDataService
+from core.database import SessionLocal, engine
 from services.simple_sector_calculator import SectorCalculator
 from models.sector_sentiment_30min import SectorSentiment30M
 
@@ -22,8 +20,6 @@ logger = logging.getLogger(__name__)
 
 class SMAPipeline30M:
     def __init__(self) -> None:
-        self.filters = SectorFilters()
-        self.data_service = SectorDataService()
         self.calc_weighted = SectorCalculator(mode="weighted")
 
     async def run(self) -> Dict[str, Any]:
@@ -34,61 +30,70 @@ class SMAPipeline30M:
         sector_results: Dict[str, Dict[str, Any]] = {}
         now = datetime.now(timezone.utc)
         cutoff = now - timedelta(minutes=30)
+        tolerance = timedelta(minutes=5)
+        cutoff_plus = cutoff + tolerance
 
         for sector in sectors:
             try:
-                stocks = await self.data_service.get_filtered_sector_data(sector, self.filters)
-                if not stocks:
-                    sector_results[sector] = {"sentiment_score": 0.0, "weighted_sentiment_score": 0.0}
-                    continue
-
-                symbols = [s.get("symbol") for s in stocks if s.get("symbol")]
-                if not symbols:
-                    sector_results[sector] = {"sentiment_score": 0.0, "weighted_sentiment_score": 0.0}
-                    continue
-
                 with SessionLocal() as db:
-                    # Latest and ~30m ago snapshots per symbol
+                    # Active symbols for this sector
+                    symbols = [
+                        r[0]
+                        for r in db.execute(
+                            text("SELECT symbol FROM stock_universe WHERE sector = :sector AND is_active = true"),
+                            {"sector": sector},
+                        ).fetchall()
+                    ]
+                    if not symbols:
+                        sector_results[sector] = {"sentiment_score": 0.0, "weighted_sentiment_score": 0.0}
+                        continue
+
+                    # Latest snapshot and strict ago snapshot (must be at least 25 minutes older than latest per symbol)
                     rows = db.execute(
                         text(
                             """
                             WITH latest AS (
-                              SELECT symbol, price,
+                              SELECT symbol, price AS now_price, volume AS now_volume, recorded_at AS now_ts,
                                      ROW_NUMBER() OVER (PARTITION BY symbol ORDER BY recorded_at DESC) AS rn
                               FROM stock_prices_1d WHERE symbol = ANY(:symbols)
                             ),
+                            picked_latest AS (
+                              SELECT symbol, now_price, now_volume, now_ts FROM latest WHERE rn = 1
+                            ),
                             ago AS (
-                              SELECT symbol, price,
-                                     ROW_NUMBER() OVER (PARTITION BY symbol ORDER BY recorded_at DESC) AS rn
-                              FROM stock_prices_1d
-                              WHERE symbol = ANY(:symbols) AND recorded_at <= :cutoff
+                              SELECT sp.symbol, sp.price AS ago_price,
+                                     ROW_NUMBER() OVER (PARTITION BY sp.symbol ORDER BY sp.recorded_at DESC) AS arn
+                              FROM stock_prices_1d sp
+                              JOIN picked_latest pl ON pl.symbol = sp.symbol
+                              WHERE sp.symbol = ANY(:symbols)
+                                AND sp.recorded_at <= (pl.now_ts - INTERVAL '25 minutes')
                             )
-                            SELECT l.symbol,
-                                   MAX(l.price) FILTER (WHERE l.rn = 1) AS now_price,
-                                   MAX(a.price) FILTER (WHERE a.rn = 1) AS ago_price
-                            FROM latest l
-                            LEFT JOIN ago a ON a.symbol = l.symbol
-                            GROUP BY l.symbol
+                            SELECT pl.symbol,
+                                   pl.now_price AS now_price,
+                                   pl.now_volume AS now_volume,
+                                   MAX(a.ago_price) FILTER (WHERE a.arn = 1) AS ago_price
+                            FROM picked_latest pl
+                            LEFT JOIN ago a ON a.symbol = pl.symbol
+                            GROUP BY pl.symbol, pl.now_price, pl.now_volume
                             """
                         ),
-                        {"symbols": symbols, "cutoff": cutoff},
+                        {"symbols": symbols},
                     ).fetchall()
 
                 symbol_returns: List[float] = []
                 weighted_input: List[Dict[str, Any]] = []
-                weights_by_symbol = {str(s["symbol"]): {"price": float(s.get("current_price") or 0.0), "volume": int(s.get("volume") or 0)} for s in stocks}
-                for sym, now_price, ago_price in rows:
+                for sym, now_price, now_volume, ago_price in rows:
                     latest = float(now_price or 0.0)
                     prior = float(ago_price or 0.0)
+                    vol = int(now_volume or 0)
                     if latest > 0 and prior > 0:
                         ret = ((latest - prior) / prior) * 100.0
                         symbol_returns.append(ret)
-                        w = weights_by_symbol.get(str(sym), {"price": latest, "volume": 0})
                         weighted_input.append({
                             "symbol": str(sym),
                             "changes_percentage": ret,
-                            "current_price": float(w.get("price") or latest),
-                            "volume": int(w.get("volume") or 0),
+                            "current_price": latest,
+                            "volume": vol,
                         })
 
                 if symbol_returns:
@@ -114,9 +119,13 @@ class SMAPipeline30M:
             if not ok2:
                 raise ValueError("; ".join(issues2))
 
-            import datetime
             ts = now
             batch_id = validator.generate_batch_id().replace("batch_3d_", "batch_30m_")
+            # Ensure destination table exists (dev environments may not run migrations)
+            try:
+                SectorSentiment30M.__table__.create(bind=engine, checkfirst=True)
+            except Exception:
+                pass
             with SessionLocal() as db:
                 for s, data in sector_results.items():
                     db.add(

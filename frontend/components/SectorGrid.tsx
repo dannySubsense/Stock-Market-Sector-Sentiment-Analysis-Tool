@@ -273,6 +273,8 @@ const SectorGrid: React.FC<SectorGridProps> = ({
   const last3DFetchRef = useRef<number>(0);
   const last1WFetchRef = useRef<number>(0);
   const last30mFetchRef = useRef<number>(0);
+  const [thirtyMinSimple, setThirtyMinSimple] = useState<Record<string, number>>({});
+  const [thirtyMinWeighted, setThirtyMinWeighted] = useState<Record<string, number>>({});
 
   const apply3DToDisplay = () => {
     const map = calcMode === 'weighted' ? threeDayWeighted : threeDaySimple;
@@ -377,6 +379,10 @@ const SectorGrid: React.FC<SectorGridProps> = ({
               top_bullish: [],
               top_bearish: [],
             } as SectorData;
+            const maybe30m = (calcMode === 'weighted' ? thirtyMinWeighted : thirtyMinSimple)[s.sector];
+            if (typeof maybe30m === 'number') {
+              base.timeframe_scores['30min'] = maybe30m;
+            }
             // If we already have cached 3D/1W values, apply them without refetch
             const maybe3d = (calcMode === 'weighted' ? threeDayWeighted : threeDaySimple)[s.sector];
             if (typeof maybe3d === 'number') {
@@ -511,6 +517,9 @@ const SectorGrid: React.FC<SectorGridProps> = ({
             weighted[String(s.sector)] = nWeighted;
           }
         }
+        // Cache latest maps so toggling doesn't wipe 30M
+        setThirtyMinSimple(simple);
+        setThirtyMinWeighted(weighted);
         // Apply to display from cache
         setDisplaySectors(prev => prev.map(item => {
           const map = calcMode === 'weighted' ? weighted : simple;
@@ -536,9 +545,10 @@ const SectorGrid: React.FC<SectorGridProps> = ({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // When user toggles simple/weighted, refetch 1D preview only
+  // When user toggles simple/weighted, refetch 1D preview and refresh 30M
   useEffect(() => {
-    fetchSectorData(true);
+    fetchSectorData(false);
+    fetch30MData(true);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [calcMode]);
 
@@ -550,7 +560,7 @@ const SectorGrid: React.FC<SectorGridProps> = ({
   }, [calcMode, threeDaySimple, threeDayWeighted, oneWeekSimple, oneWeekWeighted]);
 
   // Poll for a new persisted batch (checks simple endpoint regardless of toggle)
-  const pollUntilNewBatch = async (prevTs: string | null, maxTries = 45, intervalMs = 2000): Promise<boolean> => {
+  const pollUntilNewBatch = async (prevTs: string | null, maxTries = 10, intervalMs = 3000): Promise<boolean> => {
     const baseUrl = `${API_BASE}/api/sectors/1day/`;
     for (let i = 0; i < maxTries; i++) {
       try {
@@ -576,7 +586,6 @@ const SectorGrid: React.FC<SectorGridProps> = ({
   // Handle refresh button click: POST recompute then poll until a new batch is persisted
   const handleRefresh = async () => {
     if (isRefreshing) return;
-    setIsRefreshing(true);
     setRefreshMsg('Scheduling recompute...');
 
     const recomputeUrl1d = `${API_BASE}/api/sectors/1day/recompute`;
@@ -593,41 +602,43 @@ const SectorGrid: React.FC<SectorGridProps> = ({
 
       if (r1.status === 403) {
         setRefreshMsg('Recompute disabled by server settings.');
-        await fetchSectorData(true);
+        fetchSectorData(false);
         return;
       }
       if (r1.status === 401) {
         setRefreshMsg('Unauthorized. Missing or invalid admin token.');
-        await fetchSectorData(true);
+        fetchSectorData(false);
         return;
       }
       if (r1.status === 429) {
-        setRefreshMsg('Cooldown active. Waiting for next eligible batch...');
-      } else if (r1.status === 409) {
-        setRefreshMsg('Recompute already in progress. Waiting...');
+        setRefreshMsg('Cooldown active. Try again shortly.');
+        return;
+      }
+      if (r1.status === 409) {
+        setRefreshMsg('Recompute already in progress...');
       } else if (r1.status === 202) {
-        setRefreshMsg('Recompute accepted. Waiting for new 1D batch...');
+        setRefreshMsg('Updating in background...');
       } else {
-        setRefreshMsg('Recompute scheduled. Polling for 1D updates...');
+        setRefreshMsg('Polling for 1D updates...');
       }
 
-      // Poll 1D for new persisted timestamp
-      const gotNew1d = await pollUntilNewBatch(prevTs);
-      if (gotNew1d) {
-        setRefreshMsg(null);
-        // After new batch, fetch according to current toggle (simple or weighted)
-        await fetchSectorData(true);
-        await fetch3DData(true); // exactly one 3D fetch per refresh
-        await fetch1WData(true); // exactly one 1W fetch per refresh
-        await fetch30MData(true); // exactly one 30M fetch per refresh
-      } else {
-        setRefreshMsg('Timed out waiting for recompute. Showing latest available.');
-        await fetchSectorData(true);
-      }
+      // Background poll for a new persisted timestamp (non-blocking UI)
+      pollUntilNewBatch(prevTs, 10, 3000).then(async (gotNew1d) => {
+        if (gotNew1d) {
+          setRefreshMsg(null);
+          // Refresh 1D according to current toggle and update 30M once; leave 3D/1W unchanged
+          await fetchSectorData(false);
+          await fetch30MData(true);
+        } else {
+          setRefreshMsg('No update detected.');
+          // Light refresh of current view
+          fetchSectorData(false);
+        }
+      });
     } catch (err) {
       console.error('Error scheduling recompute:', err);
-      setRefreshMsg('Error scheduling recompute. Refreshing view only.');
-      await fetchSectorData(true);
+      setRefreshMsg('Error scheduling recompute.');
+      fetchSectorData(false);
     } finally {
       setIsRefreshing(false);
     }

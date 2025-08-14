@@ -59,6 +59,11 @@ async def get_all_sectors_1day(
 
             data_service = SectorDataService()
             filters = SectorFilters()
+            # Relax preview filters to avoid empty results in weighted mode
+            try:
+                filters.volume.min_volume = 50_000
+            except Exception:
+                pass
             calculator = SectorCalculator(mode=calc)
             rows = db.execute(text("SELECT DISTINCT sector FROM stock_universe WHERE is_active = true ORDER BY sector")).fetchall()
             sectors_dynamic = [r[0] for r in rows]
@@ -92,7 +97,7 @@ async def get_all_sectors_1day(
                     "created_at": now_ts.isoformat(),
                 })
 
-            return {
+            payload = {
                 "sectors": out,
                 "metadata": {
                     "batch_id": "preview",
@@ -108,6 +113,10 @@ async def get_all_sectors_1day(
                     "calc": calc,
                 },
             }
+            # Cache preview for short period to avoid recomputing on quick toggles
+            _preview_cache_3d[cache_key] = payload
+            _preview_cache_3d_expiry[cache_key] = now_ts + timedelta(seconds=15)
+            return payload
 
         # Get latest complete batch for 1day timeframe
         batch_records, is_stale = freshness_service.get_latest_complete_batch(
@@ -312,12 +321,16 @@ async def recompute_30min(
         async def _do_recompute_30m():
             async with _recompute_lock_30m:
                 sma = get_sma_pipeline_30m()
-                await sma.run()
+                return await sma.run()
 
         sync = request.query_params.get("sync")
         if isinstance(sync, str) and sync.lower() == "true":
-            await _do_recompute_30m()
-            return {"status": "accepted", "message": "Recompute completed (sync)", "timeframe": "30min"}
+            try:
+                result = await _do_recompute_30m()
+                return {"status": "accepted", "message": "Recompute completed (sync)", "timeframe": "30min", "result": result}
+            except Exception as e:
+                logger.exception(f"30m recompute failed: {e}")
+                raise HTTPException(status_code=500, detail=f"30m recompute failed: {e}")
         else:
             asyncio.create_task(_do_recompute_30m())
             return {"status": "accepted", "message": "Recompute scheduled", "timeframe": "30min"}
